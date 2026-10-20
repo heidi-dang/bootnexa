@@ -58,3 +58,5 @@ On Windows CI, the workflow additionally builds the **release Windows executable
 **Automated acceptance** may be considered passed only when all CI jobs are green on the same exact SHA. **Hardware acceptance and signing remain open.** Do not label milestone 0.2 “fully Windows hardware qualified” on the basis of mocks or Windows CI alone.
 
 When a physical Windows computer is available, use [agent/README.md](../agent/README.md) and record actual consent interaction (user approves/denies), USB insertion/hotplug enumeration, identity classification, and signed installer validation before declaring full hardware qualification.
+
+Windows read-only PowerShell device discovery has a bounded 30-second timeout to accommodate cold Storage-provider startup. A timeout fails closed, never returns an empty successful inventory.
