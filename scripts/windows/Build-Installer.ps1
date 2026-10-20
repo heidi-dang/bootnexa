@@ -19,10 +19,20 @@ if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw 'Agent signing failed.' }
 $stampArgs = if ($production) { "/tr $TimestampUrl /td SHA256 " } else { '' }
 # Inno Setup invokes this SignTool for BOTH setup and its embedded uninstaller.
 # $f is an Inno Setup placeholder resolved to a quoted output path.
-$signCommand = "`"$signTool`" sign /fd SHA256 /sha1 $Thumbprint $stampArgs" + '$f'
+# Inno Setup 6 parses command-line sign tools itself; nested quoted
+# Program Files SDK paths otherwise split /S into stray script arguments.
+# Stage SignTool in a whitespace-free, ignored build directory.
+$signToolForInno = Join-Path $root 'out/windows/signtool-package.exe'
+New-Item -ItemType Directory -Force -Path (Split-Path $signToolForInno -Parent) | Out-Null
+Copy-Item -LiteralPath $signTool -Destination $signToolForInno -Force
+$signCommand = "$signToolForInno sign /fd SHA256 /sha1 $Thumbprint $stampArgs" + '$f'
 $installerScript = Join-Path $root 'packaging/windows/BootNexaAgent.iss'
-& $iscc "/DAppVersion=$version" '/DSignedPackage=1' "/Sbootnexa=$signCommand" $installerScript
-if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compiler/signing failed.' }
+try {
+  & $iscc "/DAppVersion=$version" '/DSignedPackage=1' "/Sbootnexa=$signCommand" $installerScript
+  if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compiler/signing failed.' }
+} finally {
+  Remove-Item -LiteralPath $signToolForInno -Force -ErrorAction SilentlyContinue
+}
 $installer = Join-Path $root "out/windows/BootNexa-Agent-$version-windows-x64-Setup.exe"
 if (-not (Test-Path -LiteralPath $installer)) { throw 'Installer output missing.' }
 Assert-SignedFile -Path $installer -Thumbprint $Thumbprint -RequireTimestamp:$production -AllowUntrustedTest:(!$production)
