@@ -49,7 +49,7 @@ On Windows CI, the workflow additionally builds the **release Windows executable
 
 - **Actual Windows UI confirmation:** the native `MessageBoxW` system dialog is compiled, but a human has not confirmed it appears on a local Windows desktop or that clicking Yes/No works end-to-end. Injecting an approval callback tests service state, *not* real desktop interaction.
 - **Physical removable USB enumeration:** Windows CI runs on a virtual machine with whatever synthetic virtual disks the runner supplies. No physical USB hotplug, device removal, serial stability, USB bridge behaviour or multi-disk edge case is qualified.
-- **Code-signing and installer distribution:** a CI-built `.exe` is unsigned; no production installer, OS certificate, trusted update mechanism or provenance chain is established.
+- **Code-signing and installer distribution:** packaging now has CI-only test signing with native Windows install/uninstall checks, but there is no trusted production certificate, published trusted installer, or authenticated update chain. See [WINDOWS-INSTALLER.md](WINDOWS-INSTALLER.md).
 - **Hosted website→localhost browser permission:** automated Chromium tests mock network responses. Cross-origin HTTPS to localhost needs additional real-browser policy qualification against the public production origin.
 - **Disk operations:** intentional and correct for milestone 0.2. No partitioning, formatting, erasure or image writing exists.
 

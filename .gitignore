@@ -13,3 +13,5 @@ test-results/
 
 /agent/target/
 /target/
+
+/out/

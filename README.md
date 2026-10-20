@@ -13,7 +13,7 @@
 
 **A better workspace for creating bootable media.**
 
-[Explore the roadmap](doc/ROADMAP.md) · [Architecture](doc/ARCHITECTURE.md) · [Security](doc/SECURITY.md) · [Feature ledger](doc/FEATURE_MATRIX.md) · [0.2 acceptance](doc/ACCEPTANCE-0.2.md)
+[Explore the roadmap](doc/ROADMAP.md) · [Architecture](doc/ARCHITECTURE.md) · [Security](doc/SECURITY.md) · [Feature ledger](doc/FEATURE_MATRIX.md) · [0.2 acceptance](doc/ACCEPTANCE-0.2.md) · [Windows installer & signing](doc/WINDOWS-INSTALLER.md)
 
 </div>
 
@@ -28,7 +28,7 @@ The browser provides the interface. A local native agent will handle privileged 
 The project takes inspiration from established utilities such as [Rufus](https://rufus.ie/) while pursuing a modern interface and a distinct, capability-driven architecture.
 
 > [!IMPORTANT]
-> **Current stage: interactive UI + read-only native-agent source, not a disk-writing application.** The repository includes a Windows Rust agent implementation for local discovery, a native consent prompt and read-only disk inventory. The agent is developer-run, not signed or released as an installer; physical Windows hardware qualification remains outstanding. BootNexa cannot partition, erase, format, flash, verify, or boot-test a drive. The **Start writing** action is intentionally disabled until that work is complete.
+> **Current stage: interactive UI + read-only native-agent source, not a disk-writing application.** The repository includes a Windows Rust agent implementation for local discovery, a native consent prompt and read-only disk inventory. A per-user Windows installer and code-signing/release workflow are implemented; no trusted production signing certificate is configured, so no publicly trusted installer has been released. Physical Windows hardware qualification remains outstanding. BootNexa cannot partition, erase, format, flash, verify, or boot-test a drive. The **Start writing** action is intentionally disabled until that work is complete.
 
 ## A first look
 
@@ -165,7 +165,7 @@ See [ROADMAP.md](doc/ROADMAP.md) for the proposed Rust workspace structure and r
 | Stage | Scope |
 | --- | --- |
 | **0.1 · Foundation** | UI preview, identity, docs, build gates — **available in this repository** |
-| **0.2 · Read-only agent** | Rust source, auto-discovery, native Windows approval and USB inventory; hardware qualification pending |
+| **0.2 · Read-only agent** | Rust native discovery, simulated acceptance, Windows VM smoke, installer and signing pipeline; trusted certificate and hardware acceptance pending |
 | **0.3 · Image writer** | Raw-image write/verify pipeline and durable jobs |
 | **0.4 · Boot paths** | GPT/MBR, FAT32/NTFS, UEFI/BIOS and ISO support |
 | **0.5 · Windows media** | WIM/ESD, installer media and qualified setup customisation |
@@ -179,7 +179,7 @@ For full acceptance criteria, failure injection plans, the threat register, API 
 
 A green frontend build does not qualify disk functionality. Each native capability must pass security review, negative-path tests, actual-device or firmware boot testing, cancellation and recovery coverage, and an explicit completion report. A feature is not publicly supported merely because a setting exists in the UI.
 
-Current automation runs TypeScript checks and a Vite production build on pushes to `main` and pull requests. Native test suites are introduced with the agent; no pretend hardware checks are included.
+Current automation runs TypeScript checks and a Vite production build on pushes to `main` and pull requests. CI also constructs a CI-test-signed installer, verifies its signature and installed files, exercises its read-only API, and tests uninstallation. CI signing is not production certificate trust.
 
 ## Open source and attribution
 

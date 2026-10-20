@@ -1,0 +1,86 @@
+name: Signed BootNexa Windows agent release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag on main (e.g. v0.2.0)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  signed-windows-agent:
+    runs-on: windows-latest
+    environment: production
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - name: Require version tag pointing to main
+        shell: pwsh
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          if ($env:REQUESTED_TAG -notmatch '^v([0-9]+\.[0-9]+\.[0-9]+)$') { throw 'Only stable semver tags are releasable.' }
+          $expected = $Matches[1]
+          $manifest = Get-Content -Raw agent/Cargo.toml
+          if ($manifest -notmatch '(?m)^version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"') { throw 'Missing Rust package version.' }
+          if ($Matches[1] -ne $expected) { throw 'Tag does not match Rust package version.' }
+          git fetch origin main --quiet
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'Tag is not an ancestor of main.' }
+          if (@(git tag --points-at HEAD) -notcontains $env:REQUESTED_TAG) { throw 'The requested tag does not point to this checkout.' }
+      - name: Check trusted signing credentials and import into ephemeral Windows profile
+        shell: pwsh
+        env:
+          BOOTNEXA_CODESIGN_PFX_B64: ${{ secrets.BOOTNEXA_CODESIGN_PFX_B64 }}
+          BOOTNEXA_CODESIGN_PFX_PASSWORD: ${{ secrets.BOOTNEXA_CODESIGN_PFX_PASSWORD }}
+          BOOTNEXA_CODESIGN_THUMBPRINT: ${{ vars.BOOTNEXA_CODESIGN_THUMBPRINT }}
+        run: ./scripts/windows/Import-ReleaseCertificate.ps1
+      - name: Install pinned Inno Setup compiler
+        shell: pwsh
+        run: |
+          choco install innosetup --version=6.7.1 -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+      - name: Test read-only Windows agent
+        shell: pwsh
+        run: |
+          cargo test --manifest-path agent/Cargo.toml --locked --all-targets
+          if ($LASTEXITCODE -ne 0) { throw 'Rust tests failed.' }
+      - name: Compile locked Windows release binary
+        shell: pwsh
+        run: |
+          cargo build --release --manifest-path agent/Cargo.toml --locked
+          if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
+      - name: Sign agent and installer, including embedded uninstaller
+        shell: pwsh
+        env:
+          BOOTNEXA_TIMESTAMP_URL: http://timestamp.digicert.com
+        run: |
+          if (-not $env:BOOTNEXA_SIGNER_THUMBPRINT) { throw 'Signing credentials required.' }
+          ./scripts/windows/Build-Installer.ps1 -Thumbprint $env:BOOTNEXA_SIGNER_THUMBPRINT -Mode Production -TimestampUrl $env:BOOTNEXA_TIMESTAMP_URL
+      - name: Generate release SHA256 manifest
+        shell: pwsh
+        run: |
+          $artifact = @(Get-ChildItem -Path 'out/windows' -Filter '*-Setup.exe')
+          if ($artifact.Count -ne 1) { throw 'Expected exactly one signed setup.' }
+          $line = (Get-FileHash -Algorithm SHA256 $artifact[0].FullName).Hash.ToLowerInvariant() + '  ' + $artifact[0].Name
+          $line | Set-Content -Path 'out/windows/SHA256SUMS.txt' -Encoding ascii
+      - name: Publish signed, verified release (never unsigned)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          $installer = @(Get-ChildItem -Path 'out/windows' -Filter '*-Setup.exe')
+          if ($installer.Count -ne 1) { throw 'Installer missing.' }
+          . ./scripts/windows/Signing.Common.ps1
+          Assert-SignedFile -Path $installer[0].FullName -Thumbprint $env:BOOTNEXA_SIGNER_THUMBPRINT -RequireTimestamp
+          gh release create $env:RELEASE_TAG $installer[0].FullName 'out/windows/SHA256SUMS.txt' --verify-tag --title "BootNexa Agent $env:RELEASE_TAG" --notes 'Signed Windows x64 read-only agent installer. No disk-writing capability. Requires user approval for read-only device inventory.'
+          if ($LASTEXITCODE -ne 0) { throw 'Release publishing failed.' }

@@ -199,7 +199,7 @@ Treat a layout plan as untrusted until recomputed and signed by the local agent;
 
 ## Phase 12 — Agent lifecycle, signing and updates
 
-**Work:** Signed Windows installer, least-privilege service/helper, code-signed binaries, binary and update manifest verification, rollback to previously trusted agent, updater staging and anti-downgrade policy. Explicit supported version ranges between the web app and native agent; show helpful "update required" prompts without bypass paths.
+**Work:** Package per-user signed Windows agent with fail-closed release identity and install/uninstall smoke (packaging implemented; production certificate pending); later add a separately verified least-privilege helper, authenticated update manifests, rollback to previously trusted agent, updater staging and anti-downgrade policy. Explicit supported version ranges between the web app and native agent; show helpful "update required" prompts without bypass paths.
 
 **Exit gate:** Supply-chain verification, tampered updater, unsigned binary, interrupted upgrade and rollback tests pass. No updater can trigger disk writes.
 
