@@ -65,3 +65,7 @@ cargo clippy --manifest-path agent/Cargo.toml --locked --all-targets -- -D warni
 ```
 
 The browser never transfers ISO bytes or drive contents in this milestone. Native write and erase approval are designed as distinct, stronger authorisations in [the roadmap](../doc/ROADMAP.md).
+
+## Automated validation without a physical Windows computer
+
+See [milestone 0.2 acceptance](../doc/ACCEPTANCE-0.2.md) for a test matrix covering a native Windows CI runner, real read-only Get-Disk invocation, test-only native-consent simulation, actual HTTP loopback calls, and browser acceptance. These tests cannot prove the visible Windows MessageBox or physical USB hotplug behaviour.

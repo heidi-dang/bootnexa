@@ -13,7 +13,7 @@
 
 **A better workspace for creating bootable media.**
 
-[Explore the roadmap](doc/ROADMAP.md) · [Architecture](doc/ARCHITECTURE.md) · [Security](doc/SECURITY.md) · [Feature ledger](doc/FEATURE_MATRIX.md)
+[Explore the roadmap](doc/ROADMAP.md) · [Architecture](doc/ARCHITECTURE.md) · [Security](doc/SECURITY.md) · [Feature ledger](doc/FEATURE_MATRIX.md) · [0.2 acceptance](doc/ACCEPTANCE-0.2.md)
 
 </div>
 

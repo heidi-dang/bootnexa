@@ -1,6 +1,8 @@
 //! BootNexa read-only companion agent: local approval, no disk writes.
 mod device;
 #[cfg(test)]
+mod smoke_tests;
+#[cfg(test)]
 mod tests;
 use axum::{
     Json, Router,
@@ -14,7 +16,9 @@ use axum::{
 use rand::random;
 use serde_json::{Value, json};
 use std::{
+    future::Future,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    pin::Pin,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -23,12 +27,19 @@ const PORT: u16 = 43627;
 const TOKEN_TTL: Duration = Duration::from_secs(1800);
 const MAX_DENIALS: u8 = 5;
 type Approval = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+type Discovery = Arc<
+    dyn Fn() -> Pin<
+            Box<dyn Future<Output = Result<Vec<device::Device>, device::DiscoveryError>> + Send>,
+        > + Send
+        + Sync,
+>;
 
 #[derive(Clone)]
 struct AppState {
     origin: String,
     auth: Arc<Mutex<Auth>>,
     approve: Approval,
+    discover: Discovery,
 }
 struct Session {
     token: String,
@@ -51,6 +62,7 @@ impl AppState {
                 sessions: Vec::new(),
             })),
             approve,
+            discover: Arc::new(|| Box::pin(device::discover())),
         }
     }
 }
@@ -229,7 +241,7 @@ async fn devices(State(state): State<AppState>, headers: HeaderMap) -> Response 
     if !authorised(&state, &headers) {
         return err(StatusCode::UNAUTHORIZED, "not_authorised");
     }
-    match device::discover().await {
+    match (state.discover)().await {
         Ok(drives) => Json(json!({"devices":drives,"readOnly":true})).into_response(),
         Err(device::DiscoveryError::Unsupported) => {
             err(StatusCode::NOT_IMPLEMENTED, "windows_agent_required")
