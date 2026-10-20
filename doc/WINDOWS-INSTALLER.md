@@ -81,3 +81,13 @@ A trusted production code-signing certificate must be acquired and backed by sec
 - Obtain physical removable USB and hotplug coverage before claiming hardware acceptance.
 
 Installer packaging is one readiness gate, not a substitute for these validations.
+
+## Production credential and repository protection
+
+The GitHub `production` environment is now configured with the repository owner as an explicit required reviewer, administrator bypass disabled and **only the `main` branch** permitted. The source ref is independently verified twice: a preflight job accepts only a `vX.Y.Z` tag pointing to **current** `main` HEAD, and the Windows signing job revalidates the commit after approval and again before release publication. A moved main branch aborts the release. Existing releases are never overwritten.
+
+The project currently has **no trusted provider credential, certificate, or production release**. Do not trigger the production workflow with a test certificate. GitHub's protected environment is a security guard, not proof that a publicly trusted certificate exists.
+
+The current PFX import mechanism is valid only where a legitimate publicly trusted signer permits a securely exported PFX. Many modern code-signing certificates use non-exportable HSM custody and cannot be loaded this way. SignPath Foundation is a possible provider for BootNexa's publicly licensed repository; its external application, maintained/released-project eligibility, SignPath organization, signing policy, trusted build-source verification and manual signing approval must be completed before integrating a SignPath KSP or remote-signing workflow. **Never upload an HSM-protected private key to GitHub.**
+
+[Code signing policy](CODE-SIGNING-POLICY.md) · [SignPath Foundation application](https://signpath.org/apply)

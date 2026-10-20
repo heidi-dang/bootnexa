@@ -54,6 +54,10 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: ./scripts/windows/Build-Installer.ps1 -Thumbprint $env:BOOTNEXA_SIGNER_THUMBPRINT -Mode Test
+      - name: Enforce production release trust and missing-credential rejection
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: ./tests/windows/production-gates-smoke.ps1
       - name: Verify per-user silent install, signed files and uninstall
         if: matrix.os == 'windows-latest'
         shell: pwsh

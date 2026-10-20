@@ -32,11 +32,19 @@ function Assert-Certificate {
   if ($codeSigningEku.Count -eq 0) { throw 'Expected a code-signing EKU.' }
   if ($Production) {
     if ($cert.Subject -match '(?i)(test|development|self.signed|ci only)') { throw 'Test certificate prohibited for production.' }
+    if ($cert.Subject -eq $cert.Issuer) { throw 'Self-issued certificate cannot be used for a public release.' }
     $chain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
     try {
       $chain.ChainPolicy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::Online
       if (-not $chain.Build($cert)) {
         throw "Production certificate is not publicly trusted: $($chain.ChainStatus | Out-String)"
+      }
+      if ($chain.ChainElements.Count -lt 2) { throw 'No public CA chain could be established.' }
+      $root = $chain.ChainElements[$chain.ChainElements.Count - 1].Certificate
+      # A local user's privately imported root can make Windows report Valid.
+      # Require a machine-trusted root on the clean Windows CI runner too.
+      if (-not (Test-Path -LiteralPath "Cert:\LocalMachine\Root\$($root.Thumbprint)")) {
+        throw 'The signing root is not in the machine root trust store.'
       }
     } finally { $chain.Dispose() }
   }
