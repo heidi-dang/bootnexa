@@ -27,6 +27,20 @@ try {
   $uninstall = Join-Path $installed 'unins000.exe'
   if (-not (Test-Path -LiteralPath $binary) -or -not (Test-Path -LiteralPath $uninstall)) { throw 'Expected installed files are absent.' }
   Assert-SignedFile -Path $binary -Thumbprint $thumb -AllowUntrustedTest
+  # Mutating executable code bytes must invalidate the Authenticode digest.
+  $tampered = Join-Path $env:RUNNER_TEMP 'bootnexa-tampered-agent.exe'
+  $data = [System.IO.File]::ReadAllBytes($binary)
+  if ($data.Length -le 8192) { throw 'Agent binary unexpectedly small.' }
+  $data[4096] = $data[4096] -bxor 1
+  [System.IO.File]::WriteAllBytes($tampered, $data)
+  $rejected = $false
+  try {
+    Assert-SignedFile -Path $tampered -Thumbprint $thumb -AllowUntrustedTest
+  } catch {
+    $rejected = $true
+    Write-Host 'PASS: tampered executable signature rejected.'
+  }
+  if (-not $rejected) { throw 'Tampered agent unexpectedly passed signature verification.' }
   Assert-SignedFile -Path $uninstall -Thumbprint $thumb -AllowUntrustedTest
   $original = Join-Path $root 'agent/target/release/bootnexa-agent.exe'
   if ((Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash -ne

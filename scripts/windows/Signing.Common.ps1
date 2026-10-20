@@ -47,7 +47,16 @@ function Assert-SignedFile {
   $full = (Resolve-Path -LiteralPath $Path).Path
   $signature = Get-AuthenticodeSignature -LiteralPath $full
   if ($AllowUntrustedTest) {
-    if ($signature.Status -notin @('Valid','NotTrusted')) { throw "CI Authenticode verification failed: $full — $($signature.Status)" }
+    # Self-signed test certificates are deliberately NOT trusted by Windows.
+    # Windows may report UnknownError (CERT_E_UNTRUSTEDROOT), not NotTrusted.
+    # Only an explicit untrusted-chain message is acceptable, never a bad digest.
+    $status = [string]$signature.Status
+    $reason = [string]$signature.StatusMessage
+    if ($status -notin @('Valid','NotTrusted') -and
+        -not ($status -eq 'UnknownError' -and $reason -match '(?i)(untrusted root|not trusted by the trust provider|0x800b0109|certificate chain.*not trusted)')) {
+      throw "CI Authenticode verification failed ($status): $full — $reason"
+    }
+    Write-Host "CI Authenticode status: $status ($reason)"
   } elseif ($signature.Status -ne 'Valid') { throw "Not a trusted Authenticode signature: $full — $($signature.Status)" }
   if ($signature.SignerCertificate.Thumbprint -ne $Thumbprint) { throw "Unexpected code-signing identity for $full" }
   if ($RequireTimestamp -and -not $signature.TimeStamperCertificate) { throw "No trusted timestamp: $full" }
