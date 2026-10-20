@@ -25,7 +25,7 @@ $installerScript = Join-Path $root 'packaging/windows/BootNexaAgent.iss'
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compiler/signing failed.' }
 $installer = Join-Path $root "out/windows/BootNexa-Agent-$version-windows-x64-Setup.exe"
 if (-not (Test-Path -LiteralPath $installer)) { throw 'Installer output missing.' }
-Assert-SignedFile -Path $installer -Thumbprint $Thumbprint -RequireTimestamp:$production
+Assert-SignedFile -Path $installer -Thumbprint $Thumbprint -RequireTimestamp:$production -AllowUntrustedTest:(!$production)
 $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
 Write-Host "SIGNED INSTALLER SHA256: $sha"
 Write-Host "Installer path: $installer"

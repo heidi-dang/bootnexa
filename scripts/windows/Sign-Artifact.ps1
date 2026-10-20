@@ -17,5 +17,5 @@ if ($production) {
 $args += $full
 & $signTool @args
 if ($LASTEXITCODE -ne 0) { throw "Code signing failed: $full" }
-Assert-SignedFile -Path $full -Thumbprint $Thumbprint -RequireTimestamp:$production
+Assert-SignedFile -Path $full -Thumbprint $Thumbprint -RequireTimestamp:$production -AllowUntrustedTest:(!$production)
 Write-Host "Verified Authenticode ($Mode): $(Split-Path -Leaf $full)"

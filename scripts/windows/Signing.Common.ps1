@@ -43,13 +43,17 @@ function Assert-Certificate {
   return $cert
 }
 function Assert-SignedFile {
-  param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Thumbprint, [switch]$RequireTimestamp)
+  param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Thumbprint, [switch]$RequireTimestamp, [switch]$AllowUntrustedTest)
   $full = (Resolve-Path -LiteralPath $Path).Path
   $signature = Get-AuthenticodeSignature -LiteralPath $full
-  if ($signature.Status -ne 'Valid') { throw "Not a trusted Authenticode signature: $full — $($signature.Status)" }
+  if ($AllowUntrustedTest) {
+    if ($signature.Status -notin @('Valid','NotTrusted')) { throw "CI Authenticode verification failed: $full — $($signature.Status)" }
+  } elseif ($signature.Status -ne 'Valid') { throw "Not a trusted Authenticode signature: $full — $($signature.Status)" }
   if ($signature.SignerCertificate.Thumbprint -ne $Thumbprint) { throw "Unexpected code-signing identity for $full" }
   if ($RequireTimestamp -and -not $signature.TimeStamperCertificate) { throw "No trusted timestamp: $full" }
   $signTool = Find-SignTool
-  & $signTool verify /pa /v $full
-  if ($LASTEXITCODE -ne 0) { throw "SignTool verification failed: $full" }
+  if (-not $AllowUntrustedTest) {
+    & $signTool verify /pa /v $full
+    if ($LASTEXITCODE -ne 0) { throw "SignTool verification failed: $full" }
+  }
 }

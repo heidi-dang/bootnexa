@@ -65,11 +65,11 @@ A trusted production code-signing certificate must be acquired and backed by sec
 - Both agent EXE and setup/uninstaller are signed under the same pinned identity.
 - Production uses SHA-256 and an RFC 3161 timestamp; installed code signing certificate must be valid and trusted.
 - `Get-AuthenticodeSignature` must return `Valid`, with the expected thumbprint.
-- Windows SDK `signtool verify /pa` must return a successful exit code.
+- In production Windows SDK `signtool verify /pa` must return success. Test mode checks Authenticode signer identity and requires the status to be either `Valid` or `NotTrusted` (not a hash mismatch); it never installs a test certificate as a trusted root.
 - Inno signs its embedded uninstaller, not merely the outer setup EXE.
 - Installation and uninstallation tests confirm a hash-identical installed agent and no startup entry after uninstall.
 - PR CI generates an ephemeral self-signed signer on the runner only and validates the same packaging and verification mechanisms. This **does not** qualify real-world trust/SmartScreen reputation.
-- The release job is manually triggered, checks a stable version tag on `main`, and requires signing credentials before producing any published artifacts.
+- The test certificate remains untrusted on Windows and is never imported into the Trusted Root store. The release job is manually triggered, checks a stable version tag on `main`, and requires signing credentials before producing any published artifacts.
 
 ## Explicit open items
 
