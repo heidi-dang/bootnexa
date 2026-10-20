@@ -8,7 +8,7 @@ BootNexa is two cooperating products: a static browser-delivered application and
 HTTPS web app (React / TypeScript)
   ├── workflow state and capability-aware controls
   ├── local image selection; no server upload
-  ├── pairing / origin-bound agent session
+  ├── agent auto-discovery / origin-bound native approval
   └── progress replay + operation reports
                 │ loopback only
                 ▼
@@ -73,7 +73,7 @@ The initial project intentionally uses a single Vite application at repository r
 | Failure | Required behaviour |
 | --- | --- |
 | Agent unavailable | Disable hardware actions; retain interface preview |
-| Session expired | Re-pair; cannot reuse past consent |
+| Session expired | Obtain a new short-lived read-only session; consent is process-scoped |
 | Target removed | Terminate job; media incomplete; report |
 | Target identity changed | Refuse operation; require new selection and consent |
 | Insufficient permissions | Guided local elevation; no silent bypass |

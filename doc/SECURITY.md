@@ -14,7 +14,7 @@ BootNexa is a disk modification utility. It must be designed as destructive soft
 
 | Threat | Control |
 | --- | --- |
-| Arbitrary site invokes `localhost` agent | Strict `Origin`/`Host`/remote-peer checks, explicit pairing, session-bound tokens, reject cross-site upgrades |
+| Arbitrary site invokes `localhost` agent | Strict `Origin`/`Host`/remote-peer checks, native user approval, session-bound tokens, reject cross-site upgrades |
 | DNS rebinding and PNA bypass | Loopback listener, host allowlist, no hostname-only trust, modern browser permission tests |
 | CSRF and ambient credential abuse | No cookie-only auth, nonce/replay defence, every mutation authenticated |
 | Replay of old erase approval | Bind token to target identity, generation, image digest, layout digest, user confirmation and expiry |
