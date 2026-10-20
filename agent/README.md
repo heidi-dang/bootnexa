@@ -1,6 +1,6 @@
 # BootNexa local agent (milestone 0.2)
 
-A read-only companion process for **Windows**, written in Rust. This is developer software, **not a signed installer**. It exposes a small, origin-restricted HTTP API bound only to `127.0.0.1:43627`.
+A read-only companion process for **Windows**, written in Rust. This is a read-only native agent. A per-user Windows installer and fail-closed production signing workflow are available, but no trusted production signing certificate or public release is configured. It exposes a small, origin-restricted HTTP API bound only to `127.0.0.1:43627`.
 
 ## Run on Windows
 
@@ -69,3 +69,7 @@ The browser never transfers ISO bytes or drive contents in this milestone. Nativ
 ## Automated validation without a physical Windows computer
 
 See [milestone 0.2 acceptance](../doc/ACCEPTANCE-0.2.md) for a test matrix covering a native Windows CI runner, real read-only Get-Disk invocation, test-only native-consent simulation, actual HTTP loopback calls, and browser acceptance. These tests cannot prove the visible Windows MessageBox or physical USB hotplug behaviour.
+
+## Installer and signing
+
+See [Windows installer and signed-release process](../doc/WINDOWS-INSTALLER.md) for per-user installation, start-on-login, test certificate isolation, production signing secrets, signature checks and uninstall verification. The production release workflow cannot publish an installer without a trusted code-signing certificate.

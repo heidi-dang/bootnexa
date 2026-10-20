@@ -1,6 +1,7 @@
 # BootNexa Windows VM smoke. Runs the compiled agent; NEVER grants native access or modifies disks.
+param([string]$BinaryPath = '')
 $ErrorActionPreference = 'Stop'
-$binary = Join-Path $PSScriptRoot '../../agent/target/release/bootnexa-agent.exe'
+$binary = if ($BinaryPath) { $BinaryPath } else { Join-Path $PSScriptRoot '../../agent/target/release/bootnexa-agent.exe' }
 $binary = [System.IO.Path]::GetFullPath($binary)
 if (-not (Test-Path $binary)) { throw "Native Windows agent not found: $binary" }
 $base = 'http://127.0.0.1:43627'

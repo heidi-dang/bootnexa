@@ -49,7 +49,7 @@ On Windows CI, the workflow additionally builds the **release Windows executable
 
 - **Actual Windows UI confirmation:** the native `MessageBoxW` system dialog is compiled, but a human has not confirmed it appears on a local Windows desktop or that clicking Yes/No works end-to-end. Injecting an approval callback tests service state, *not* real desktop interaction.
 - **Physical removable USB enumeration:** Windows CI runs on a virtual machine with whatever synthetic virtual disks the runner supplies. No physical USB hotplug, device removal, serial stability, USB bridge behaviour or multi-disk edge case is qualified.
-- **Code-signing and installer distribution:** a CI-built `.exe` is unsigned; no production installer, OS certificate, trusted update mechanism or provenance chain is established.
+- **Code-signing and installer distribution:** packaging now has CI-only test signing with native Windows install/uninstall checks, but there is no trusted production certificate, published trusted installer, or authenticated update chain. See [WINDOWS-INSTALLER.md](WINDOWS-INSTALLER.md).
 - **Hosted website→localhost browser permission:** automated Chromium tests mock network responses. Cross-origin HTTPS to localhost needs additional real-browser policy qualification against the public production origin.
 - **Disk operations:** intentional and correct for milestone 0.2. No partitioning, formatting, erasure or image writing exists.
 
@@ -58,3 +58,5 @@ On Windows CI, the workflow additionally builds the **release Windows executable
 **Automated acceptance** may be considered passed only when all CI jobs are green on the same exact SHA. **Hardware acceptance and signing remain open.** Do not label milestone 0.2 “fully Windows hardware qualified” on the basis of mocks or Windows CI alone.
 
 When a physical Windows computer is available, use [agent/README.md](../agent/README.md) and record actual consent interaction (user approves/denies), USB insertion/hotplug enumeration, identity classification, and signed installer validation before declaring full hardware qualification.
+
+Windows read-only PowerShell device discovery has a bounded 30-second timeout to accommodate cold Storage-provider startup. A timeout fails closed, never returns an empty successful inventory.

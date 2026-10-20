@@ -132,7 +132,7 @@ pub async fn discover() -> Result<Vec<Device>, DiscoveryError> {
         ])
         .kill_on_drop(true)
         .output();
-    let output = timeout(Duration::from_secs(10), child)
+    let output = timeout(Duration::from_secs(30), child)
         .await
         .map_err(|_| DiscoveryError::Unavailable("disk enumeration timed out".to_string()))?
         .map_err(|_| {

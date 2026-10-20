@@ -40,3 +40,21 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: ./tests/windows/smoke.ps1
+      - name: Install pinned Inno Setup compiler
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          choco install innosetup --version=6.7.1 -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+      - name: Create ephemeral CI-only test signing certificate
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: ./scripts/windows/New-TestCertificate.ps1
+      - name: Sign and assemble complete test installer and uninstaller
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: ./scripts/windows/Build-Installer.ps1 -Thumbprint $env:BOOTNEXA_SIGNER_THUMBPRINT -Mode Test
+      - name: Verify per-user silent install, signed files and uninstall
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: ./tests/windows/installer-smoke.ps1

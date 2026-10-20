@@ -1,3 +1,4 @@
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 //! BootNexa read-only companion agent: local approval, no disk writes.
 mod device;
 #[cfg(test)]
