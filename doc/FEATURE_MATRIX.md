@@ -11,9 +11,9 @@ This file is the public record for supported, planned and explicitly unsupported
 | Web experience | Responsive workspace, dark/light theme, navigation | 0.1 | Preview | Build and browser interaction |
 | Images | Local ISO/IMG/VHD/VHDX/FFU file picker | 0.1 | Preview | Browser File API, no upload |
 | Images | ISO content/OS metadata inspection | 0.4 | Planned | Fixture corpus + malformed input |
-| Devices | Windows read-only eligible-USB discovery | 0.2 | Development | Parser tests pass; physical Windows coverage pending |
+| Devices | Windows read-only eligible-USB discovery | 0.2 | Development | Windows Get-Disk VM smoke + parser fixtures; physical USB coverage pending |
 | Devices | Stable identification, system disk protection, hot-swap defence | 0.2 | Planned | Destructive safety fixtures |
-| Operations | Agent discovery, native read-only approval, local origin enforcement | 0.2 | Development | Unit tests; Windows physical qualification pending |
+| Operations | Agent discovery, native read-only approval, local origin enforcement | 0.2 | Development | Mocked real-HTTP tests + Windows VM smoke; physical qualification pending |
 | Operations | Progress, recovery log, cancellation and replay | 0.3 | Planned | Injected crashes and unplug |
 | Imaging | Raw IMG/DD streaming write | 0.3 | Planned | Read-back/hash test |
 | Imaging | Image-to-target read-back verification | 0.3 | Planned | Real hardware |

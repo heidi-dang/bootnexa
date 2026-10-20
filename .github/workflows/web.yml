@@ -3,11 +3,12 @@ on:
   push:
     branches: [main]
   pull_request:
+permissions:
+  contents: read
+
 jobs:
   web:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,17 +18,25 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:smoke -- --workers=1
+
   rust:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
       - run: rustup component add rustfmt clippy
       - run: cargo fmt --manifest-path agent/Cargo.toml --check
       - run: cargo test --manifest-path agent/Cargo.toml --locked --all-targets
       - run: cargo clippy --manifest-path agent/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Build real Windows agent executable
+        if: matrix.os == 'windows-latest'
+        run: cargo build --release --manifest-path agent/Cargo.toml --locked
+      - name: Windows-native read-only agent and Storage API smoke
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: ./tests/windows/smoke.ps1
