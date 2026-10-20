@@ -69,6 +69,13 @@ export function useAgent() {
   useEffect(() => {
     void connect();
   }, [connect]);
+  useEffect(() => {
+    // Discover an agent started after the webpage. Do not repeatedly prompt
+    // after the user explicitly denied access or revoked a grant.
+    if (agent.phase !== 'offline') return;
+    const handle = setInterval(() => { void connect(); }, 5000);
+    return () => clearInterval(handle);
+  }, [agent.phase, connect]);
   const refresh = useCallback(async () => {
     if (!token) { await connect(); return; }
     try { const devices = await fetchDevices(); setAgent(old => ({ ...old, devices, phase: 'connected', message: 'Drive list refreshed.' })); }
@@ -76,8 +83,15 @@ export function useAgent() {
   }, [connect]);
   const revoke = useCallback(async () => {
     if (token) {
-      try { await fetch(`${BASE}/access/revoke`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }); }
-      finally { token = null; setAgent({ phase: 'denied', message: 'Device access has been revoked.', devices: [] }); }
+      const previous = token;
+      token = null;
+      try {
+        const response = await fetch(`${BASE}/access/revoke`, { method: 'POST', headers: { Authorization: `Bearer ${previous}` }, signal: AbortSignal.timeout(3000) });
+        if (!response.ok) throw new Error('Revocation failed');
+        setAgent({ phase: 'denied', message: 'Device access has been revoked.', devices: [] });
+      } catch {
+        setAgent({ phase: 'error', message: 'Local session cleared, but agent revocation was not confirmed. Restart the agent to revoke all sessions.', devices: [] });
+      }
     }
   }, []);
   return { agent, connect, refresh, revoke };

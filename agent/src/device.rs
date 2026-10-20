@@ -17,6 +17,7 @@ pub struct Device {
 #[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Debug)]
 pub enum DiscoveryError {
+    #[cfg_attr(windows, allow(dead_code))]
     Unsupported,
     Unavailable(String),
 }
