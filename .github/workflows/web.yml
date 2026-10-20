@@ -1,4 +1,4 @@
-name: Web quality gates
+name: Web and local agent quality gates
 on:
   push:
     branches: [main]
@@ -17,3 +17,17 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run build
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup component add rustfmt clippy
+      - run: cargo fmt --manifest-path agent/Cargo.toml --check
+      - run: cargo test --manifest-path agent/Cargo.toml --locked --all-targets
+      - run: cargo clippy --manifest-path agent/Cargo.toml --locked --all-targets -- -D warnings

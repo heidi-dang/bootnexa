@@ -8,7 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-5799ff.svg)](LICENSE)
 ![React](https://img.shields.io/badge/React-18-61dafb?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)
-![Agent](https://img.shields.io/badge/native_agent-planned-f5b86b)
+![Agent](https://img.shields.io/badge/agent-read--only_0.2-3fbf98)
 ![Status](https://img.shields.io/badge/status-UI_preview-8fb8db)
 
 **A better workspace for creating bootable media.**
@@ -28,7 +28,7 @@ The browser provides the interface. A local native agent will handle privileged 
 The project takes inspiration from established utilities such as [Rufus](https://rufus.ie/) while pursuing a modern interface and a distinct, capability-driven architecture.
 
 > [!IMPORTANT]
-> **Current stage: working UI preview, not a disk-writing application.** The repository includes the responsive browser interface, original branding, an image picker, UI settings, and detailed engineering specifications. It does **not** yet include a native USB agent or the ability to partition, erase, format, flash, verify, or boot-test a drive. The **Start writing** action is intentionally disabled until that work is complete.
+> **Current stage: interactive UI + read-only native-agent source, not a disk-writing application.** The repository includes a Windows Rust agent implementation for local discovery, a native consent prompt and read-only disk inventory. The agent is developer-run, not signed or released as an installer; physical Windows hardware qualification remains outstanding. BootNexa cannot partition, erase, format, flash, verify, or boot-test a drive. The **Start writing** action is intentionally disabled until that work is complete.
 
 ## A first look
 
@@ -57,7 +57,7 @@ The layout is designed for quick decisions without hiding advanced controls: tar
 
 This is the supported workflow in the repository today; it does not require a USB drive.
 
-**1.** Clone the repository and install dependencies:
+**1.** Clone the repository and install dependencies (the read-only agent is optional):
 
 ```bash
 git clone https://github.com/heidi-dang/bootnexa.git
@@ -79,7 +79,7 @@ npm run dev
 
 **6.** Switch between dark and light themes or explore the ISO Library, Backup, Diagnostics, Activity, and Settings navigation. Those other pages are explicitly marked as future functionality.
 
-**7.** Notice that the agent status remains **not connected** and **Start writing** remains disabled. This is intentional. No USB media is written by the current build.
+**7.** With no agent running, the UI shows **Agent not connected**. On Windows, start the [read-only agent](agent/README.md) in a separate user terminal; the browser discovers it automatically and opens a native read-only device access prompt. **Start writing** remains disabled even after approval.
 
 To compile a production bundle:
 
@@ -93,7 +93,7 @@ npm run preview
 
 When the signed native agent and disk engine have passed release qualification, the end-user workflow will be:
 
-1. **Install BootNexa Agent** from an authenticated release and pair it with the approved BootNexa website.
+1. **Install BootNexa Agent** from an authenticated release. The browser detects it automatically. Approve the native prompt to grant read-only device discovery; no pairing code is needed.
 2. **Insert a USB drive** and select it by model and capacity. Internal/system disks are protected by default.
 3. **Choose a boot image** from local storage or an approved official download source.
 4. **Inspect compatibility**: OS/image architecture, firmware targets, bootloaders, partition scheme, filesystem and size constraints.
@@ -128,7 +128,7 @@ The agent is not available yet. These steps describe the delivery target, not wo
 | Dev/build | Vite 6 | Fast feedback and static deployment |
 | Iconography | Lucide React + custom SVG | Accessible icons and scalable identity |
 | Styling | CSS design tokens | Responsive, themeable and lightweight |
-| Local agent *(planned)* | Rust + Tokio | Controlled native I/O and explicit state machines |
+| Local agent *(read-only foundation)* | Rust + Tokio + Axum | Native consent, loopback API and Windows disk inventory; no writes |
 | Windows devices *(planned)* | Win32 storage APIs | Physical disk identity, lock/dismount and direct imaging |
 | Local API *(planned)* | Authenticated loopback HTTP + replayable events | Avoid unrestricted browser disk access |
 | Durable state *(planned)* | SQLite | Persisted operation records and recovery |
@@ -145,6 +145,7 @@ bootnexa/
 ├── assets/
 │   ├── bootnexa-banner.svg      # Repository header
 │   └── ui-preview.png           # Screenshot from actual running UI
+├── agent/                     # Rust read-only companion service and native consent
 ├── doc/
 │   ├── ROADMAP.md               # Release phases, gates, workstreams and backlog
 │   ├── ARCHITECTURE.md          # Agent boundaries, APIs and state
@@ -164,7 +165,7 @@ See [ROADMAP.md](doc/ROADMAP.md) for the proposed Rust workspace structure and r
 | Stage | Scope |
 | --- | --- |
 | **0.1 · Foundation** | UI preview, identity, docs, build gates — **available in this repository** |
-| **0.2 · Agent pairing** | Windows native discovery, authentication and read-only capabilities |
+| **0.2 · Read-only agent** | Rust source, auto-discovery, native Windows approval and USB inventory; hardware qualification pending |
 | **0.3 · Image writer** | Raw-image write/verify pipeline and durable jobs |
 | **0.4 · Boot paths** | GPT/MBR, FAT32/NTFS, UEFI/BIOS and ISO support |
 | **0.5 · Windows media** | WIM/ESD, installer media and qualified setup customisation |

@@ -70,7 +70,7 @@ Dates are intentionally omitted. Completion requires evidence, not a calendar pr
 **Work:** Create `apps/agent` in Rust (Tokio) and `apps/web` for the current frontend; define a stable `packages/contracts` OpenAPI/JSON Schema interface or generate TS bindings from Rust schemas. Start the agent with a loopback-only listener, never `0.0.0.0`. Advertise current protocol version, installed agent build, OS, supported capabilities, health, and session policy.
 
 **Pairing/security**
-- Initial pairing requires a local native OS interaction, time-limited one-time code and clear website identity.
+- The browser discovers the loopback agent automatically. A native Windows Yes/No approval prompt grants only read-only USB device discovery. No code entry; consent is retained only for the lifetime of the agent process.
 - Origin allowlist is scoped to the installed application's website origin or developer loopback endpoints.
 - Per-session CSRF-resistant bearer/DPoP-style proof or an equivalent explicit design; short TTL, replay resistance, no wildcard CORS.
 - Reject localhost DNS rebinding and non-loopback connections; verify `Host`, `Origin`, remote peer and scheme semantics.
@@ -82,8 +82,8 @@ Dates are intentionally omitted. Completion requires evidence, not a calendar pr
 ```text
 GET    /v1/health                -> status, platform, protocol_version
 GET    /v1/capabilities          -> versioned capability manifest
-POST   /v1/pair/begin           -> expiring pairing challenge
-POST   /v1/pair/complete        -> scoped browser-session grant
+POST   /v1/access/request      -> user-approved native prompt; devices:read bearer
+POST   /v1/access/revoke       -> revoke bearer and require new native approval
 GET    /v1/devices              -> non-sensitive candidate devices
 POST   /v1/images/inspect       -> local file handle / agent-side path identity
 POST   /v1/jobs/preflight       -> signed/expiring preflight result
@@ -297,7 +297,7 @@ A feature is **qualified** only after a written spec, threat assessment, impleme
 
 1. `web: establish design tokens and screenshot baselines`
 2. `contracts: define agent v1 schema and capability negotiation`
-3. `security: author loopback pairing and hostile-origin test harness`
+3. `security: auto-discovery, native approval and hostile-origin test harness`
 4. `agent: Windows discovery with protected-system-disk classification`
 5. `agent: preflight plan + device identity revalidation`
 6. `jobs: SQLite journal and replayable event transport`

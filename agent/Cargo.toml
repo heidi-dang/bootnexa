@@ -1,0 +1,23 @@
+[package]
+name = "bootnexa-agent"
+version = "0.2.0"
+edition = "2024"
+license = "MIT"
+description = "BootNexa read-only local companion service"
+
+[dependencies]
+axum = { version = "0.8", features = ["json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "time", "sync"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = "0.9"
+hex = "0.4"
+subtle = "2.6"
+url = "2.5"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
