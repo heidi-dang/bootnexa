@@ -81,3 +81,7 @@ A separate Rust module and command-line tool now exercise a **simulation-only** 
 ## Phase 5 virtual media engine
 
 The standalone bootnexa-jobsim CLI provides virtual-demo, virtual-corrupt, virtual-unplug, and virtual-cancel commands against synthetic anonymous regular-file fixtures. It performs real bounded copy and target read-back, but cannot accept any physical disk path or handle. Set both BOOTNEXA_ENABLE_SIMULATIONS=1 and BOOTNEXA_SIMULATION_DB to the same local test SQLite file for the browser's read-only Activity history feed. See [Phase 5](../doc/PHASE-5-VIRTUAL-IMAGING.md). Physical media writes remain disabled.
+
+## Windows read-only safety probe (developer/CI only)
+
+On Windows, run the release binary bootnexa-safety-probe.exe with --probe after the Rust release build to compare two fresh read-only Storage/CIM snapshots. The CLI has no target argument, grants no write permission, never elevates and does not ship in the end-user installer. Its report always says physicalWriteAuthorized: false, even for two matching observations; native Windows Storage IOCTL extent mapping, privileged helper, destructive per-device consent and hardware qualification are still unimplemented. See [safety probe architecture](../doc/WINDOWS-SAFETY-PROBE.md).

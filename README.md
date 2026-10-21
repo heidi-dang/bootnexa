@@ -226,3 +226,7 @@ Phase 4 adds a **simulation-only** SQLite transaction journal with immutable req
 ### Phase 5 — Virtual raw imaging
 
 The Rust simulator now performs actual bounded byte copies into **anonymous regular-file virtual targets**, followed by file sync and complete read-back SHA-256 verification. The user-facing **Activity** page can display local simulated jobs from an explicitly opt-in, read-only native feed. No operating-system physical disk can be passed to the engine, and no USB writing is enabled. See [Phase 5 virtual acceptance](doc/PHASE-5-VIRTUAL-IMAGING.md) and [hard physical-write release gates](doc/PHYSICAL-WRITE-RELEASE-GATES.md). Trusted signing [issue #5](https://github.com/heidi-dang/bootnexa/issues/5) remains open.
+
+### Read-only Windows safety probe
+
+BootNexa now includes a **separate developer/CI-only Windows Storage/CIM probe** to compare two read-only snapshots of device identity, partitions and protected-volume evidence. It reports ambiguities and changed topology but **never grants destructive authority**. The per-user installer does not ship the probe as a privileged service, and there are still no disk-write endpoints or elevation prompts for writing. See [Windows safety probe architecture](doc/WINDOWS-SAFETY-PROBE.md), [hardware release gates](doc/PHYSICAL-WRITE-RELEASE-GATES.md) and [signing blocker](https://github.com/heidi-dang/bootnexa/issues/5).

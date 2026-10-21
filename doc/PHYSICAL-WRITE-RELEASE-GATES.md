@@ -29,3 +29,7 @@ Phases 3A, 3B, 4 and 5 virtual foundation provide conservative **read-only** inv
 GitHub [production code-signing issue #5](https://github.com/heidi-dang/bootnexa/issues/5) stays open until a publicly trusted provider accepts the maintainer and the exact release passes native Authenticode/installation qualification. The protected release workflow must remain fail-closed without real credentials. Do not fake completion, use developer test certificates for releases or enable USB write routes in lieu of provider enrollment.
 
 The project must not merge physical disk-write implementation into an enabled-by-default end-user agent without separate explicit review/authorization and a passed hardware acceptance matrix.
+
+## Current preparatory read-only identity work
+
+The [read-only Windows safety probe](WINDOWS-SAFETY-PROBE.md) independently collects and compares Storage/CIM metadata in two observations. Its explicit incomplete-role and native-extent risk codes are **not** approvals. It is not elevated, not distributed in the end-user installer and has no disk-write handler. The actual helper, Windows SetupAPI/IOCTL volume ancestry and sacrificial hardware qualification in this checklist remain blocked.
