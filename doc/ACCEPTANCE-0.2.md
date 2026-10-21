@@ -60,3 +60,7 @@ On Windows CI, the workflow additionally builds the **release Windows executable
 When a physical Windows computer is available, use [agent/README.md](../agent/README.md) and record actual consent interaction (user approves/denies), USB insertion/hotplug enumeration, identity classification, and signed installer validation before declaring full hardware qualification.
 
 Windows read-only PowerShell device discovery has a bounded 30-second timeout to accommodate cold Storage-provider startup. A timeout fails closed, never returns an empty successful inventory.
+
+## Phase 3A evolution
+
+The read-only Windows inventory now adds partition-level system protection checks, composite process-scoped display IDs, and duplicate/unknown-identity exclusion. Some physical USB devices may be intentionally omitted when their identity or partition safety cannot be verified; this is not a scanner malfunction. See [Phase 3A device safety](PHASE-3-DEVICE-SAFETY.md). Those display IDs must never be accepted as write capabilities.

@@ -1,6 +1,6 @@
 # BootNexa — implementation roadmap
 
-> **Status:** Planning baseline · 20 October 2026  
+> **Status:** Implementation tracking · 21 October 2026
 > **Target:** A safe, web-first bootable-media workstation with a locally installed native agent.  
 > **Rufus baseline:** 4.15 (30 June 2026), verified against https://rufus.ie/  
 > **Owner:** BootNexa maintainers
@@ -23,7 +23,7 @@ The first supported operating system is Windows 10/11 on x64; Windows on Arm and
 
 ## Current repository state
 
-The initial commit contains a responsive React UI preview, original SVG identity, navigation and settings controls, a local image selector, and technical planning documents. **There is no disk agent, partitioning engine, elevated helper, genuine device discovery, image analysis engine, or safe physical USB writer yet.** The "Start writing" button is intentionally disabled. Other workspaces (ISO Library, Backup, Diagnostics, Activity, Settings) are navigable placeholders. Screenshots document the current UI, not a delivered flashing capability.
+The repository now includes a responsive React UI, local image file picker, a read-only Rust Windows companion agent, automatic localhost discovery, native Windows Yes/No access prompt, Windows CI coverage, and a per-user installer with **CI-only test signing**. A publicly trusted production signature and physical Windows USB qualification remain pending. Phase 3A adds process-scoped opaque USB display identities, conservative boot/system partition exclusion, and failure-closed ambiguous-device filtering (see [Phase 3A device safety](PHASE-3-DEVICE-SAFETY.md)). These safeguards are **read-only and are not destructive-operation authority**. There is still **no** privileged disk writer, durable job engine, USB erase/format/partition operation, or verified bootable media output. The "Start writing" button intentionally stays disabled.
 
 ## Release sequence
 
@@ -98,6 +98,8 @@ No disk access from a browser alone; file handles selected in the browser are no
 **Exit gate:** No privileged process runs for ordinary health/device GET; origin, nonce, replay, and permission tests pass.
 
 ## Phase 3 — Trusted device inventory and authorisation
+
+**Progress:** Phase 3A read-only Windows Storage and partition-based device safety foundation implemented and test-backed. **Not complete:** SetupAPI/IOCTL ancestry, privileged rechecks, device-specific destructive consent, hardware qualification. See [Phase 3A evidence](PHASE-3-DEVICE-SAFETY.md).
 
 **Work:** Implement Windows device inventory using SetupAPI, storage device IOCTLs, volume mapping and stable identifiers. Return internal/fixed/removable heuristics and known mountpoints without exposing sensitive files. Treat removability as a hint: USB-attached storage can report as fixed.
 
