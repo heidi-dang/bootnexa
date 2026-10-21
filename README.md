@@ -218,3 +218,7 @@ The Windows agent now uses combined storage identity and partition-level boot/sy
 ### Local image inspection and SHA-256 (Phase 3B)
 
 Choose an ISO/IMG/IMA/DD file to inspect its container signature and compute SHA-256 locally in a 4 MiB-chunked browser worker. Optionally compare the checksum with a publisher-supplied digest and check image size against a selected eligible USB drive. Unsupported or malformed structures, mismatched hashes, undersized and write-protected drives fail preflight. **These checks do not certify bootability, authorize a native disk handle or enable USB writing.** See [Phase 3B acceptance](doc/PHASE-3B-IMAGE-PREFLIGHT.md).
+
+### Durable job simulator and audit trail (Phase 4)
+
+Phase 4 adds a **simulation-only** SQLite transaction journal with immutable request idempotency, synthetic target leases, ordered progress events, explicit interruption/cancellation and replayable audit cursors. A standalone Rust simulator and opt-in read-only local SSE/JSON feed allow testing restart and failure behavior without USB hardware. **No actual write, erase, format, volume lock or production success is possible.** See [Phase 4 journal and simulation guide](doc/PHASE-4-JOB-ENGINE.md).

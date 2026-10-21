@@ -117,6 +117,8 @@ No disk access from a browser alone; file handles selected in the browser are no
 
 ## Phase 4 — Transactional job engine and write journal
 
+**Progress:** SQLite-backed simulated state machine, idempotent creation, exclusive synthetic target leases, transactional audit events, process restart recovery, cancellation, fault injection and optional read-only SSE/JSON replay implemented ([Phase 4 evidence](PHASE-4-JOB-ENGINE.md)). **Real physical executor, native device locks and browser Activity integration remain unimplemented.** No physical job can be reported successful by the simulation journal.
+
 **Work:** Implement durable SQLite job state with monotonic events and atomic lifecycle transitions: `CREATED -> PREFLIGHTED -> WAITING_FOR_CONSENT -> LOCKING -> PREPARING -> WRITING -> FLUSHING -> VERIFYING -> SUCCEEDED`; cancellation and failures land in explicit terminal states. Persist before each irreversible operation.
 
 **Contracts:** Job ID, idempotency key, source image digest, target identity fingerprint, capability set, created/updated timestamps, phases, bytes completed, rolling hash, stream retry counters, warning codes, scrubbed error details, and native helper exit report. Stream events over SSE/WebSocket with increasing cursor and snapshot replay after disconnect.

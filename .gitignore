@@ -15,3 +15,8 @@ test-results/
 /target/
 
 /out/
+
+# Developer-owned Phase 4 simulation databases; never include job journals in source.
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
