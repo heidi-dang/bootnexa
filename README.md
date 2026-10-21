@@ -28,7 +28,7 @@ The browser provides the interface. A local native agent will handle privileged 
 The project takes inspiration from established utilities such as [Rufus](https://rufus.ie/) while pursuing a modern interface and a distinct, capability-driven architecture.
 
 > [!IMPORTANT]
-> **Current stage: interactive UI + read-only native-agent source, not a disk-writing application.** The repository includes a Windows Rust agent implementation for local discovery, a native consent prompt and read-only disk inventory. A per-user Windows installer and code-signing/release workflow are implemented; no trusted production signing certificate is configured, so no publicly trusted installer has been released. Physical Windows hardware qualification remains outstanding. BootNexa cannot partition, erase, format, flash, verify, or boot-test a drive. The **Start writing** action is intentionally disabled until that work is complete.
+> **Current stage: interactive UI + read-only native-agent source, not a disk-writing application.** The repository includes a Windows Rust agent for local discovery, a native consent prompt and read-only disk inventory, plus in-browser ISO/raw-image structure inspection and SHA-256 integrity checks. A per-user Windows installer and code-signing/release workflow are implemented; no trusted production signing certificate is configured, so no publicly trusted installer has been released. Physical Windows hardware qualification remains outstanding. BootNexa cannot partition, erase, format, flash, verify, or boot-test a drive. The **Start writing** action is intentionally disabled until that work is complete.
 
 ## A first look
 
@@ -214,3 +214,7 @@ BootNexa has prepared a [SignPath Foundation application dossier](doc/SIGNPATH-A
 ### Phase 3 device safety foundation
 
 The Windows agent now uses combined storage identity and partition-level boot/system exclusion for its **read-only** USB inventory. Display IDs are opaque and rotate on process restart; they are **not** safe to use as privileged disk-write authorisation. See [Phase 3A device safety and qualification limits](doc/PHASE-3-DEVICE-SAFETY.md). All destructive actions remain disabled.
+
+### Local image inspection and SHA-256 (Phase 3B)
+
+Choose an ISO/IMG/IMA/DD file to inspect its container signature and compute SHA-256 locally in a 4 MiB-chunked browser worker. Optionally compare the checksum with a publisher-supplied digest and check image size against a selected eligible USB drive. Unsupported or malformed structures, mismatched hashes, undersized and write-protected drives fail preflight. **These checks do not certify bootability, authorize a native disk handle or enable USB writing.** See [Phase 3B acceptance](doc/PHASE-3B-IMAGE-PREFLIGHT.md).
