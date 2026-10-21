@@ -29,6 +29,20 @@ try {
   $uninstall = Join-Path $installed 'unins000.exe'
   if (-not (Test-Path -LiteralPath $binary) -or -not (Test-Path -LiteralPath $uninstall)) { throw 'Expected installed files are absent.' }
   Assert-SignedFile -Path $binary @signaturePolicy
+  # Windows VERSIONINFO must identify exactly the software being signed.
+  $metadata = (Get-Item -LiteralPath $binary).VersionInfo
+  $cargo = Get-Content -Raw -LiteralPath (Join-Path $root 'agent/Cargo.toml')
+  if ($cargo -notmatch '(?m)^version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"') { throw 'Cargo version missing.' }
+  $version = $Matches[1]
+  if ($metadata.ProductName -ne 'BootNexa Agent' -or
+      $metadata.CompanyName -ne 'BootNexa' -or
+      $metadata.OriginalFilename -ne 'bootnexa-agent.exe' -or
+      $metadata.ProductVersion -notlike "$version*" -or
+      $metadata.FileVersion -notlike "$version*") {
+    throw "Invalid Windows product metadata: $($metadata | Format-List | Out-String)"
+  }
+  Write-Host "PASS: Windows executable VERSIONINFO matches BootNexa Agent $version."
+
   # Mutating executable code bytes must invalidate the Authenticode digest.
   $tampered = Join-Path $env:RUNNER_TEMP 'bootnexa-tampered-agent.exe'
   $data = [System.IO.File]::ReadAllBytes($binary)

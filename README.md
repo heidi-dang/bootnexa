@@ -13,7 +13,7 @@
 
 **A better workspace for creating bootable media.**
 
-[Explore the roadmap](doc/ROADMAP.md) · [Architecture](doc/ARCHITECTURE.md) · [Security](doc/SECURITY.md) · [Feature ledger](doc/FEATURE_MATRIX.md) · [0.2 acceptance](doc/ACCEPTANCE-0.2.md) · [Windows installer & signing](doc/WINDOWS-INSTALLER.md) · [Code signing policy](doc/CODE-SIGNING-POLICY.md)
+[Explore the roadmap](doc/ROADMAP.md) · [Architecture](doc/ARCHITECTURE.md) · [Security](doc/SECURITY.md) · [Feature ledger](doc/FEATURE_MATRIX.md) · [0.2 acceptance](doc/ACCEPTANCE-0.2.md) · [Windows installer & signing](doc/WINDOWS-INSTALLER.md) · [Code signing policy](doc/CODE-SIGNING-POLICY.md) · [Privacy](doc/PRIVACY.md)
 
 </div>
 
@@ -206,3 +206,7 @@ Compatibility and interaction references: [Rufus](https://rufus.ie/), [wimlib](h
 ## Code signing policy
 
 Windows agent releases require an approved publicly trusted publisher identity, a current reviewed Git tag, signed executable/installer/uninstaller, a valid timestamp and explicit release approval. The automated CI signer is for testing only; no publicly trusted release is available yet. See [the complete policy](doc/CODE-SIGNING-POLICY.md).
+
+### Trusted-signing application
+
+BootNexa has prepared a [SignPath Foundation application dossier](doc/SIGNPATH-APPLICATION.md). The project has **not** been accepted and no publicly trusted Windows installer is available. Application contact details, release eligibility and any third-party agreements must be completed with the provider.
