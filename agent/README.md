@@ -34,7 +34,7 @@ Consent remains valid until the agent process exits or the session is explicitly
 | POST | `/v1/access/revoke` | Read-only bearer | Revoke the session and reset consent |
 | GET | `/v1/devices` | Read-only bearer + exact browser origin | Enumerate eligible USB devices |
 
-There are **no** write, erase, format, partition, mount, image-inspect or privileged-helper endpoints.
+There are **no** write, erase, format, partition, mount, image-inspect or privileged-helper endpoints. Optional, opt-in Phase 4 simulation-history GET endpoints are documented below.
 
 ## Discovery policy
 
@@ -73,3 +73,7 @@ See [milestone 0.2 acceptance](../doc/ACCEPTANCE-0.2.md) for a test matrix cover
 ## Installer and signing
 
 See [Windows installer and signed-release process](../doc/WINDOWS-INSTALLER.md) for per-user installation, start-on-login, test certificate isolation, production signing secrets, signature checks and uninstall verification. The production release workflow cannot publish an installer without a trusted code-signing certificate.
+
+## Phase 4 simulation journal
+
+A separate Rust module and command-line tool now exercise a **simulation-only** durable SQLite job engine. See [Phase 4 journal and CLI instructions](../doc/PHASE-4-JOB-ENGINE.md). To view synthetic snapshots or persisted events in the agent's read-only API, set both BOOTNEXA_ENABLE_SIMULATIONS=1 and BOOTNEXA_SIMULATION_DB to an owned SQLite file path before starting an interactive agent. These disabled-by-default routes are GET-only, require the existing origin-bound bearer and expose simulations/{id}, simulations/{id}/events and simulations/{id}/stream as SSE. The CLI can generate synthetic jobs in the database; no HTTP mutation endpoints exist. Native disk writing remains disabled.

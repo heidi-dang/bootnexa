@@ -31,3 +31,7 @@ If local image handling, telemetry, updates, remote diagnostics, or signed distr
 Security and privacy questions may be raised through the project's [GitHub issues](https://github.com/heidi-dang/bootnexa/issues); do not include credentials or private disk contents in public issues.
 
 This policy applies to the software shipped from [BootNexa's source repository](https://github.com/heidi-dang/bootnexa). It does not override the privacy terms of separately operated GitHub or web-hosting services.
+
+## Optional Phase 4 simulation history
+
+When the native agent is explicitly started with the Phase 4 simulation flag and a user-selected SQLite database path, it stores synthetic job phases, hashed mock identifiers, timestamps, byte counts, and sanitized failure codes on local disk. These records are not uploaded to a BootNexa service. The read-only loopback history routes require the usual origin-bound session token; remove the local SQLite file when you no longer need the simulator history. The feature is disabled by default and has no raw-media privileges.

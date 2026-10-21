@@ -1,6 +1,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 //! BootNexa read-only companion agent: local approval, no disk writes.
 mod device;
+mod sim_api;
 #[cfg(test)]
 mod smoke_tests;
 #[cfg(test)]
@@ -41,6 +42,7 @@ struct AppState {
     auth: Arc<Mutex<Auth>>,
     approve: Approval,
     discover: Discovery,
+    simulations: Option<Arc<bootnexa_agent::journal::JobStore>>,
 }
 struct Session {
     token: String,
@@ -64,6 +66,7 @@ impl AppState {
             })),
             approve,
             discover: Arc::new(|| Box::pin(device::discover())),
+            simulations: None,
         }
     }
 }
@@ -88,6 +91,9 @@ fn router(state: AppState) -> Router {
         .route("/v1/access/request", post(access_request))
         .route("/v1/access/revoke", post(revoke))
         .route("/v1/devices", get(devices))
+        .route("/v1/simulations/{id}", get(sim_api::snapshot))
+        .route("/v1/simulations/{id}/events", get(sim_api::events))
+        .route("/v1/simulations/{id}/stream", get(sim_api::stream))
         .layer(DefaultBodyLimit::max(512))
         .layer(middleware::from_fn_with_state(state.clone(), boundary))
         .with_state(state)
@@ -133,10 +139,11 @@ async fn boundary(State(state): State<AppState>, request: Request<Body>, next: N
     if origin.is_some_and(|v| v != state.origin) {
         return err(StatusCode::FORBIDDEN, "origin_not_allowed");
     }
-    if matches!(
+    if (matches!(
         request.uri().path(),
         "/v1/devices" | "/v1/access/request" | "/v1/access/revoke"
-    ) && origin != Some(state.origin.as_str())
+    ) || request.uri().path().starts_with("/v1/simulations/"))
+        && origin != Some(state.origin.as_str())
     {
         return err(StatusCode::FORBIDDEN, "origin_required");
     }
@@ -295,9 +302,22 @@ async fn main() -> std::io::Result<()> {
     let listener =
         tokio::net::TcpListener::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), PORT))
             .await?;
-    axum::serve(
-        listener,
-        router(AppState::new(origin, Arc::new(native_approve))),
-    )
-    .await
+    let mut state = AppState::new(origin, Arc::new(native_approve));
+    // Explicit developer opt-in. Off in production by default. These routes
+    // only disclose simulation history, never create jobs or touch USB disks.
+    if std::env::var("BOOTNEXA_ENABLE_SIMULATIONS").as_deref() == Ok("1") {
+        let path = std::env::var("BOOTNEXA_SIMULATION_DB")
+            .expect("BOOTNEXA_SIMULATION_DB required for opt-in simulations");
+        let store =
+            bootnexa_agent::journal::JobStore::open(path).expect("cannot open simulator database");
+        let interrupted = store
+            .recover_interrupted()
+            .expect("cannot perform startup recovery");
+        println!(
+            "Simulation-only SQLite feed enabled ({} interrupted jobs recovered).",
+            interrupted
+        );
+        state.simulations = Some(Arc::new(store));
+    }
+    axum::serve(listener, router(state)).await
 }

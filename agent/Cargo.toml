@@ -15,6 +15,10 @@ hex = "0.4"
 subtle = "2.6"
 url = "2.5"
 sha2 = "0.10.9"
+rusqlite = { version = "0.37", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
+thiserror = "2"
+async-stream = "0.3"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
@@ -26,3 +30,4 @@ winres = "0.1.12"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
+tempfile = "3"
