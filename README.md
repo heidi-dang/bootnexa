@@ -210,3 +210,7 @@ Windows agent releases require an approved publicly trusted publisher identity, 
 ### Trusted-signing application
 
 BootNexa has prepared a [SignPath Foundation application dossier](doc/SIGNPATH-APPLICATION.md). The project has **not** been accepted and no publicly trusted Windows installer is available. Application contact details, release eligibility and any third-party agreements must be completed with the provider.
+
+### Phase 3 device safety foundation
+
+The Windows agent now uses combined storage identity and partition-level boot/system exclusion for its **read-only** USB inventory. Display IDs are opaque and rotate on process restart; they are **not** safe to use as privileged disk-write authorisation. See [Phase 3A device safety and qualification limits](doc/PHASE-3-DEVICE-SAFETY.md). All destructive actions remain disabled.
