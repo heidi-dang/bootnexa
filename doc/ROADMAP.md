@@ -99,7 +99,7 @@ No disk access from a browser alone; file handles selected in the browser are no
 
 ## Phase 3 — Trusted device inventory and authorisation
 
-**Progress:** Phase 3A read-only Windows Storage and partition-based device safety foundation implemented and test-backed. **Not complete:** SetupAPI/IOCTL ancestry, privileged rechecks, device-specific destructive consent, hardware qualification. See [Phase 3A evidence](PHASE-3-DEVICE-SAFETY.md).
+**Progress:** Phase 3A read-only Windows Storage and partition-based device safety foundation implemented and test-backed. Phase 3B adds browser-only image structure detection, SHA-256 and preliminary capacity/checksum preflight ([details](PHASE-3B-IMAGE-PREFLIGHT.md)). **Not complete:** SetupAPI/IOCTL ancestry, privileged rechecks, device-specific destructive consent, hardware qualification. See [Phase 3A evidence](PHASE-3-DEVICE-SAFETY.md).
 
 **Work:** Implement Windows device inventory using SetupAPI, storage device IOCTLs, volume mapping and stable identifiers. Return internal/fixed/removable heuristics and known mountpoints without exposing sensitive files. Treat removability as a hint: USB-attached storage can report as fixed.
 

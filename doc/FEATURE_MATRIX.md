@@ -13,6 +13,8 @@ This file is the public record for supported, planned and explicitly unsupported
 | Images | ISO content/OS metadata inspection | 0.4 | Planned | Fixture corpus + malformed input |
 | Devices | Windows read-only eligible-USB discovery | 0.2 | Development | Windows Get-Disk VM smoke + parser fixtures; physical USB coverage pending |
 | Devices | Process-scoped composite display IDs and boot/system exclusion (not write authority) | 0.3 | Development | Identity/index-reuse and protected-partition fixtures + Windows VM |
+| Images | Browser ISO 9660/GPT/MBR/FAT inspection and streaming SHA-256 | 0.3 | Development | Malformed fixtures, independent known SHA-256 comparisons, chunked worker tests |
+| Images | Expected checksum and image/USB byte-capacity preflight | 0.3 | Development | Wrong checksum, unsupported images, insufficient and read-only target tests |
 | Operations | Agent discovery, native read-only approval, local origin enforcement | 0.2 | Development | Mocked real-HTTP tests + Windows VM smoke; physical qualification pending |
 | Devices | Privileged target revalidation and physical hot-swap defence | 0.3 | Planned | SetupAPI/IOCTL ancestry + hardware/VM failure injection |
 | Operations | Progress, recovery log, cancellation and replay | 0.3 | Planned | Injected crashes and unplug |

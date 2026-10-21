@@ -8,7 +8,7 @@ BootNexa is a web interface with an optional local, read-only Windows companion.
 
 **The local agent does not transfer information to any external networked system.** It accepts requests only from the explicitly configured browser origin and listens on the local loopback interface (`127.0.0.1:43627`). The browser communicates directly with that local agent to display approved read-only USB device metadata: model, capacity, partition style, bus type, and an ephemeral display identifier.
 
-The browser's local image picker currently reads filename and file size metadata in the page. It does not upload disk images or ISO contents to a BootNexa server.
+The browser's image picker now reads a bounded header sample for local format inspection and streams the entire selected file through an in-browser Web Worker to calculate its SHA-256. Files and image contents are not uploaded to a BootNexa server or transferred to the native agent. The SHA-256 result, structure classification and optional publisher-provided checksum are displayed only in the page.
 
 ## Data and network boundaries
 
