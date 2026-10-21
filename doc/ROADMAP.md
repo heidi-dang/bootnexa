@@ -131,6 +131,8 @@ No disk access from a browser alone; file handles selected in the browser are no
 
 ## Phase 5 — First end-to-end writer: raw images
 
+**Progress:** The **virtual-media foundation** streams raw bytes through bounded 64 KiB buffers into anonymous regular-file targets, calls regular-file sync, performs complete source-to-target read-back verification and persists every stage through Phase 4 SQLite journaling. Injected I/O, corruption, disconnect, cancellation and restart cases are tested on Windows/Linux CI ([Phase 5 evidence](PHASE-5-VIRTUAL-IMAGING.md)). Read-only Activity history is integrated into the browser via the opt-in simulation API. **Not complete:** physically privileged writes, Windows disk volume locks, actual USB flush/verification, device-specific destructive consent, physical-device qualification and publicly trusted code signing ([release gates](PHYSICAL-WRITE-RELEASE-GATES.md)).
+
 **Work:** Support directly writable IMG/DD and uncompressed raw images using bounded buffered or aligned I/O. Record source/target size; reject images larger than the device. Enforce a single writer per device, bounded retries on transient errors, and speed calculations based on monotonic timing.
 
 **Verify:** Hash source as it is read, flush target, read back written bytes, and compare to source using a verified strategy. For a media writer, a successful source checksum alone does **not** prove the target was written correctly. Expose exact verification coverage and status in the final report.

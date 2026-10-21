@@ -77,3 +77,7 @@ See [Windows installer and signed-release process](../doc/WINDOWS-INSTALLER.md) 
 ## Phase 4 simulation journal
 
 A separate Rust module and command-line tool now exercise a **simulation-only** durable SQLite job engine. See [Phase 4 journal and CLI instructions](../doc/PHASE-4-JOB-ENGINE.md). To view synthetic snapshots or persisted events in the agent's read-only API, set both BOOTNEXA_ENABLE_SIMULATIONS=1 and BOOTNEXA_SIMULATION_DB to an owned SQLite file path before starting an interactive agent. These disabled-by-default routes are GET-only, require the existing origin-bound bearer and expose simulations/{id}, simulations/{id}/events and simulations/{id}/stream as SSE. The CLI can generate synthetic jobs in the database; no HTTP mutation endpoints exist. Native disk writing remains disabled.
+
+## Phase 5 virtual media engine
+
+The standalone bootnexa-jobsim CLI provides virtual-demo, virtual-corrupt, virtual-unplug, and virtual-cancel commands against synthetic anonymous regular-file fixtures. It performs real bounded copy and target read-back, but cannot accept any physical disk path or handle. Set both BOOTNEXA_ENABLE_SIMULATIONS=1 and BOOTNEXA_SIMULATION_DB to the same local test SQLite file for the browser's read-only Activity history feed. See [Phase 5](../doc/PHASE-5-VIRTUAL-IMAGING.md). Physical media writes remain disabled.

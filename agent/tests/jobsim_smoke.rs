@@ -63,3 +63,24 @@ fn restart_and_cancellation_never_report_physical_success() {
             .any(|e| e["phase"] == "SIMULATED_SUCCEEDED")
     );
 }
+
+#[test]
+fn virtual_cli_reports_full_readback_and_failed_corruption_on_disk() {
+    let folder = tempfile::tempdir().unwrap();
+    let db = folder.path().join("virtual-cli.sqlite");
+    let result = invoke(&db, "virtual-demo", &["524288"]);
+    assert_eq!(result["phase"], "SIMULATED_SUCCEEDED");
+    assert_eq!(result["physicalWrite"], false);
+    assert_eq!(result["readbackSha256"], result["sourceSha256"]);
+    assert_eq!(result["verifiedBytes"], 524288);
+    assert!(result["maxBufferBytes"].as_u64().unwrap() <= 131072);
+    let failed = invoke(&db, "virtual-corrupt", &["262144"]);
+    assert_eq!(failed["phase"], "FAILED");
+    assert_eq!(failed["physicalWrite"], false);
+    let detached = invoke(&db, "virtual-unplug", &["262144"]);
+    assert_eq!(detached["phase"], "FAILED");
+    assert_eq!(detached["failureCode"], "device_disconnected");
+    let cancelled = invoke(&db, "virtual-cancel", &["262144"]);
+    assert_eq!(cancelled["phase"], "CANCELLED");
+    assert_eq!(invoke(&db, "recover", &[])["interrupted"], 0);
+}

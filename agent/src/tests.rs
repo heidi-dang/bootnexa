@@ -341,3 +341,96 @@ async fn simulation_routes_disabled_by_default() {
         .unwrap();
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn read_only_simulation_listing_is_bounded_and_requires_active_grant() {
+    use bootnexa_agent::journal::{JobRequest, JobStore};
+    let dir = tempfile::tempdir().unwrap();
+    let store = JobStore::open(dir.path().join("listing.sqlite")).unwrap();
+    let j = store
+        .create(&JobRequest {
+            idempotency_key: "list-job-001".into(),
+            source_sha256: "a".repeat(64),
+            simulated_target: "b".repeat(64),
+            expected_bytes: 1024,
+        })
+        .unwrap();
+    let mut s = state(true);
+    s.simulations = Some(Arc::new(store));
+    let app = router(s);
+    let path = "/v1/simulations?limit=1";
+    assert_eq!(
+        app.clone()
+            .oneshot(req(path, Method::GET, None))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(req(path, Method::GET, Some(ORIGIN)))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let first = json(
+        app.clone()
+            .oneshot(req("/v1/access/request", Method::POST, Some(ORIGIN)))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let key = first["token"].as_str().unwrap();
+    let snapshot = json(
+        app.clone()
+            .oneshot(token(req(path, Method::GET, Some(ORIGIN)), key))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(snapshot["simulationOnly"], true);
+    assert_eq!(snapshot["jobs"][0]["id"], j.id);
+    assert_eq!(snapshot["jobs"][0]["phase"], "CREATED");
+    assert_eq!(
+        app.clone()
+            .oneshot(token(
+                req("/v1/simulations?limit=101", Method::GET, Some(ORIGIN)),
+                key
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(token(
+                req("/v1/simulations", Method::POST, Some(ORIGIN)),
+                key
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::METHOD_NOT_ALLOWED
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(token(
+                req("/v1/access/revoke", Method::POST, Some(ORIGIN)),
+                key
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        app.oneshot(token(req(path, Method::GET, Some(ORIGIN)), key))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+}

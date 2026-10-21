@@ -35,3 +35,7 @@ This policy applies to the software shipped from [BootNexa's source repository](
 ## Optional Phase 4 simulation history
 
 When the native agent is explicitly started with the Phase 4 simulation flag and a user-selected SQLite database path, it stores synthetic job phases, hashed mock identifiers, timestamps, byte counts, and sanitized failure codes on local disk. These records are not uploaded to a BootNexa service. The read-only loopback history routes require the usual origin-bound session token; remove the local SQLite file when you no longer need the simulator history. The feature is disabled by default and has no raw-media privileges.
+
+## Phase 5 temporary imaging fixtures
+
+The Phase 5 developer-only simulator generates anonymous temporary regular files for source and target data. It hashes and compares them locally; no file image bytes are transmitted to the browser, agent HTTP endpoints, or a cloud service. The optional Activity page retrieves only metadata about the last 20 simulated jobs from the local read-only agent API, subject to the existing native-approved session token.

@@ -96,3 +96,30 @@ export function useAgent() {
   }, []);
   return { agent, connect, refresh, revoke };
 }
+
+export type SimulatedJob = {
+  id: string;
+  phase: string;
+  expectedBytes: number;
+  completedBytes: number;
+  verifiedBytes: number;
+  flushSimulated: boolean;
+  failureCode: string | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+/** Read-only, opt-in simulation feed. The in-memory devices:read grant is reused;
+ * no client-side code can create or write jobs through this interface. */
+export async function loadSimulationJobs(): Promise<SimulatedJob[]> {
+  if (!token) throw new Error('Connect and approve the local agent first.');
+  const res = await fetch(`${BASE}/simulations?limit=20`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store', signal: AbortSignal.timeout(8000),
+  });
+  if (res.status === 404) throw new Error('Developer simulation history is disabled on this agent.');
+  if (res.status === 401) { token = null; throw new Error('Agent session expired — reconnect.'); }
+  if (!res.ok) throw new Error('Unable to load the local simulation history.');
+  const data = await res.json() as { simulationOnly?: boolean; jobs?: SimulatedJob[] };
+  if (data.simulationOnly !== true || !Array.isArray(data.jobs)) throw new Error('Unexpected agent response.');
+  return data.jobs;
+}

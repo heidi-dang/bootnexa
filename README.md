@@ -222,3 +222,7 @@ Choose an ISO/IMG/IMA/DD file to inspect its container signature and compute SHA
 ### Durable job simulator and audit trail (Phase 4)
 
 Phase 4 adds a **simulation-only** SQLite transaction journal with immutable request idempotency, synthetic target leases, ordered progress events, explicit interruption/cancellation and replayable audit cursors. A standalone Rust simulator and opt-in read-only local SSE/JSON feed allow testing restart and failure behavior without USB hardware. **No actual write, erase, format, volume lock or production success is possible.** See [Phase 4 journal and simulation guide](doc/PHASE-4-JOB-ENGINE.md).
+
+### Phase 5 — Virtual raw imaging
+
+The Rust simulator now performs actual bounded byte copies into **anonymous regular-file virtual targets**, followed by file sync and complete read-back SHA-256 verification. The user-facing **Activity** page can display local simulated jobs from an explicitly opt-in, read-only native feed. No operating-system physical disk can be passed to the engine, and no USB writing is enabled. See [Phase 5 virtual acceptance](doc/PHASE-5-VIRTUAL-IMAGING.md) and [hard physical-write release gates](doc/PHYSICAL-WRITE-RELEASE-GATES.md). Trusted signing [issue #5](https://github.com/heidi-dang/bootnexa/issues/5) remains open.
