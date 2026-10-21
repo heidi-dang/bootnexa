@@ -36,8 +36,11 @@ async function connectedAgent(page: Page, capacity: number, readOnly = false) {
   });
 }
 async function selectFile(page: Page, name: string, data: Buffer) {
-  await expect(page.locator('.agent-status strong')).not.toHaveText('Finding local agent');
+  // A negative assertion can succeed before the React client mounts. Wait for
+  // the agent connection effect to complete so upload handlers are active.
+  await expect(page.locator('.agent-status strong')).toHaveText(/^(Agent connected|Agent not connected|Access not authorised|Unsupported platform)$/);
   await page.locator('input[type=file]').setInputFiles(file(name, data));
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
   await expect(page.getByTestId('image-sha256')).toHaveText(createHash('sha256').update(data).digest('hex'));
 }
 
