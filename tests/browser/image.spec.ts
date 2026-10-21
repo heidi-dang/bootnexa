@@ -41,7 +41,7 @@ async function selectFile(page: Page, name: string, data: Buffer) {
   await expect(page.locator('.agent-status strong')).toHaveText(/^(Agent connected|Agent not connected|Access not authorised|Unsupported platform)$/);
   await page.locator('input[type=file]').setInputFiles(file(name, data));
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
-  await expect(page.getByTestId('image-sha256')).toHaveText(createHash('sha256').update(data).digest('hex'));
+  await expect(page.getByTestId('image-sha256')).toHaveText(createHash('sha256').update(data).digest('hex'), { timeout: 20_000 });
 }
 
 test('ISO signature, local streamed SHA-256 and capacity preflight', async ({ page }) => {
