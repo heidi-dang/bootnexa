@@ -18,6 +18,9 @@ url = "2.5"
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
 
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1.12"
+
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"

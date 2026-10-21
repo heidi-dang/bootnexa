@@ -91,3 +91,7 @@ The project currently has **no trusted provider credential, certificate, or prod
 The current PFX import mechanism is valid only where a legitimate publicly trusted signer permits a securely exported PFX. Many modern code-signing certificates use non-exportable HSM custody and cannot be loaded this way. SignPath Foundation is a possible provider for BootNexa's publicly licensed repository; its external application, maintained/released-project eligibility, SignPath organization, signing policy, trusted build-source verification and manual signing approval must be completed before integrating a SignPath KSP or remote-signing workflow. **Never upload an HSM-protected private key to GitHub.**
 
 [Code signing policy](CODE-SIGNING-POLICY.md) · [SignPath Foundation application](https://signpath.org/apply)
+
+## Application dossier
+
+The public [SignPath Foundation application dossier](SIGNPATH-APPLICATION.md) documents current project scope, source, the pending released-binary prerequisite, roles, privacy, and provider-side signing requirements. A trusted certificate is not yet configured. Windows release executable metadata is verified against the Cargo version by the installer smoke suite.

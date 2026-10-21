@@ -20,6 +20,20 @@ BootNexa binaries are released only from reviewed source and verifiable CI build
 
 **Fail closed:** Missing/expired credentials, failed human review, unsigned/changed payload, untrusted or mismatched signing identity, timestamp failure, stale source or CI failure block publication. Do not tell users that a test-signed artifact is publicly trusted.
 
+## Signing responsibilities and privacy
+
+**Maintainer / author:** [heidi-dang](https://github.com/heidi-dang), repository owner, responsible for maintained source and CI definitions.
+
+**Commit reviewer:** [heidi-dang](https://github.com/heidi-dang); external contributions must be reviewed by the repository owner before merging. Repository permissions and documented review requirements are authoritative and must be verified before a public signed release.
+
+**Release approver:** [heidi-dang](https://github.com/heidi-dang), configured as the required reviewer of GitHub's protected `production` environment. If SignPath Foundation accepts BootNexa, each signing request additionally requires the provider-configured human approver. The publishing workflow may not bypass that approval.
+
+**MFA requirement:** All maintainers and signers must use multi-factor authentication on GitHub and the signing provider. GitHub's connected API did not establish whether MFA is enabled for this account; maintainer verification is outstanding.
+
+**Privacy:** [BootNexa privacy policy](PRIVACY.md). The current local agent does not transmit device information to an external networked system; only authorised loopback metadata access is implemented. GitHub-hosted services and optional web hosting have separate data policies.
+
+**SignPath Foundation applicant status:** The project is preparing an application, not yet approved. If accepted, the signing policy and releases will include: *Free code signing provided by SignPath.io, certificate by SignPath Foundation.* No current public executable is signed by that foundation.
+
 ## Public distribution status
 
 As of 21 October 2026, the native agent remains read-only and the production code-signing certificate/provider has **not been enrolled**. CI exercises the complete package pipeline using an ephemeral, untrusted test signer; **no publicly trusted Windows installer has been released**.
