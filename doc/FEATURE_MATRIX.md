@@ -15,6 +15,8 @@ This file is the public record for supported, planned and explicitly unsupported
 | Devices | Process-scoped composite display IDs and boot/system exclusion (not write authority) | 0.3 | Development | Identity/index-reuse and protected-partition fixtures + Windows VM |
 | Images | Browser ISO 9660/GPT/MBR/FAT inspection and streaming SHA-256 | 0.3 | Development | Malformed fixtures, independent known SHA-256 comparisons, chunked worker tests |
 | Images | Expected checksum and image/USB byte-capacity preflight | 0.3 | Development | Wrong checksum, unsupported images, insufficient and read-only target tests |
+| Imaging | File-backed virtual raw byte stream with full SHA-256 read-back | 0.3 | Development | Small/multi-chunk images, corrupted target and fault-injected byte I/O |
+| Activity | Opt-in read-only simulated job list | 0.3 | Development | Authenticated history, disabled feed and no write routes |
 | Operations | SQLite simulation journal, idempotency, recovery, cancellation, cursor events/SSE | 0.3 | Development | Concurrency, failure injection, restart, subprocess and read-only HTTP acceptance |
 | Operations | Agent discovery, native read-only approval, local origin enforcement | 0.2 | Development | Mocked real-HTTP tests + Windows VM smoke; physical qualification pending |
 | Devices | Privileged target revalidation and physical hot-swap defence | 0.3 | Planned | SetupAPI/IOCTL ancestry + hardware/VM failure injection |

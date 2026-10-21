@@ -283,6 +283,19 @@ impl JobStore {
         tx.commit()?;
         Ok(job)
     }
+    /// Bounded, newest-first synthetic jobs for read-only Activity history.
+    pub fn list_recent(&self, limit: usize) -> Result<Vec<Job>, JournalError> {
+        if !(1..=100).contains(&limit) {
+            return Err(JournalError::InvalidCursor);
+        }
+        let conn = self.connection()?;
+        let mut stmt =
+            conn.prepare("SELECT id FROM jobs ORDER BY created_at_ms DESC, rowid DESC LIMIT ?1")?;
+        let ids = stmt
+            .query_map([limit as i64], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        ids.iter().map(|id| load(&conn, id)).collect()
+    }
     pub fn get(&self, id: &str) -> Result<Job, JournalError> {
         load(&self.connection()?, id)
     }

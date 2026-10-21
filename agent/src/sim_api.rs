@@ -61,6 +61,26 @@ fn snapshot_body(job: &bootnexa_agent::journal::Job) -> Value {
         "createdAtMs":job.created_at_ms,"updatedAtMs":job.updated_at_ms,
     })
 }
+#[derive(Deserialize)]
+pub struct ListQuery {
+    limit: Option<usize>,
+}
+pub async fn listing(
+    Query(query): Query<ListQuery>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Response {
+    let store = match require(&state, &headers) {
+        Ok(store) => store,
+        Err(response) => return *response,
+    };
+    let limit = query.limit.unwrap_or(20);
+    match tokio::task::spawn_blocking(move || store.list_recent(limit)).await {
+        Ok(Ok(jobs)) => Json(json!({"simulationOnly":true,"jobs":jobs.iter().map(snapshot_body).collect::<Vec<_>>() })).into_response(),
+        Ok(Err(e))=>problem(&e),
+        Err(_)=>err(StatusCode::SERVICE_UNAVAILABLE,"simulation_unavailable"),
+    }
+}
 pub async fn snapshot(
     Path(id): Path<String>,
     State(state): State<AppState>,

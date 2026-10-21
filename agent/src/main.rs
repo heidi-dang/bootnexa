@@ -91,6 +91,7 @@ fn router(state: AppState) -> Router {
         .route("/v1/access/request", post(access_request))
         .route("/v1/access/revoke", post(revoke))
         .route("/v1/devices", get(devices))
+        .route("/v1/simulations", get(sim_api::listing))
         .route("/v1/simulations/{id}", get(sim_api::snapshot))
         .route("/v1/simulations/{id}/events", get(sim_api::events))
         .route("/v1/simulations/{id}/stream", get(sim_api::stream))
@@ -142,7 +143,7 @@ async fn boundary(State(state): State<AppState>, request: Request<Body>, next: N
     if (matches!(
         request.uri().path(),
         "/v1/devices" | "/v1/access/request" | "/v1/access/revoke"
-    ) || request.uri().path().starts_with("/v1/simulations/"))
+    ) || request.uri().path().starts_with("/v1/simulations"))
         && origin != Some(state.origin.as_str())
     {
         return err(StatusCode::FORBIDDEN, "origin_required");

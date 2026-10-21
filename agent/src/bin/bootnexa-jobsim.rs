@@ -1,5 +1,8 @@
 //! Operator-facing Phase 4 test simulator. Never opens a physical disk.
-use bootnexa_agent::journal::{JobRequest, JobStore, Phase};
+use bootnexa_agent::{
+    journal::{JobRequest, JobStore, Phase},
+    virtual_imaging::{Fault, MAX_VIRTUAL_BYTES, VirtualImage, VirtualTarget, image_virtual},
+};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::env;
@@ -11,7 +14,7 @@ fn digest(value: &str) -> String {
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = env::args().collect::<Vec<_>>();
     if args.len() < 3 {
-        return Err("usage: bootnexa-jobsim demo|crash-fixture|recover|inspect|events|cancel <sqlite-path> [job-id] [cursor]".into());
+        return Err("usage: bootnexa-jobsim demo|virtual-demo|virtual-corrupt|virtual-unplug|virtual-cancel|crash-fixture|recover|inspect|events|cancel <sqlite-path> [job-id] [cursor]".into());
     }
     let operation = args[1].as_str();
     let store = JobStore::open(&args[2])?;
@@ -57,6 +60,37 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 "verifiedBytes":done.verified_bytes,"flushSimulated":done.flush_recorded,
                 "result":"no_physical_media_access"})
             );
+        }
+        "virtual-demo" | "virtual-corrupt" | "virtual-unplug" | "virtual-cancel" => {
+            let size: u64 = args
+                .get(3)
+                .map(|s| s.parse())
+                .transpose()?
+                .unwrap_or(2 * 1024 * 1024);
+            if size == 0 || size > MAX_VIRTUAL_BYTES {
+                return Err("invalid virtual fixture size".into());
+            }
+            let mut source = VirtualImage::seeded(size, 23)?;
+            let mut target = VirtualTarget::new(size + 512)?;
+            let fault = match operation {
+                "virtual-corrupt" => Fault::CorruptBeforeReadback,
+                "virtual-unplug" => Fault::UnplugAfter(65536),
+                "virtual-cancel" => Fault::CancelAfter(65536),
+                _ => Fault::None,
+            };
+            let result = image_virtual(&store, &mut source, &mut target, fault);
+            let job = store.list_recent(1)?.pop().ok_or("virtual job missing")?;
+            let report = match result {
+                Ok(output) => json!({"virtualOnly":true,"simulationOnly":true,"jobId":job.id,
+                    "phase":job.phase.as_str(),"imageBytes":size,
+                    "sourceSha256":output.source_sha256,"readbackSha256":output.readback_sha256,
+                    "verifiedBytes":output.readback_bytes,"maxBufferBytes":output.max_buffer_bytes,
+                    "flushSimulated":job.flush_recorded,"physicalWrite":false}),
+                Err(error) => json!({"virtualOnly":true,"simulationOnly":true,"jobId":job.id,
+                    "phase":job.phase.as_str(),"imageBytes":size,"failureCode":job.failure_code,
+                    "reason":error.to_string(),"physicalWrite":false}),
+            };
+            println!("{report}");
         }
         "recover" => {
             println!(
