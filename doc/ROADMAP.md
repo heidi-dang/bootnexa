@@ -166,6 +166,9 @@ Treat a layout plan as untrusted until recomputed and signed by the local agent;
 
 ## Phase 7 — ISO classification and UEFI/BIOS paths
 
+**Limited ISO-to-virtual progress:** The developer CLI now traverses strictly bounded plain ISO9660 directory trees, refuses unsafe/malformed extents and names, and streams verified small x64 EFI payloads into anonymous FAT32 virtual disks with SHA-256 read-back. The QEMU/OVMF CI gate additionally attempts actual boot of an ISO-derived synthetic EFI fixture. Windows/Linux installation candidate layouts are classified **but blocked**, not converted or boot-qualified. See [pipeline limitations](ISO-TO-VIRTUAL-PIPELINE.md).
+
+
 **Initial inspection progress:** A bounded, read-only ISO9660 descriptor / UDF recognition / El Torito catalog parser reports BIOS/UEFI boot entry signals and detects hybrid-MBR *candidates*, not supported Linux/Windows payload extraction. This is not complete ISO compatibility or boot support. See [v0.4 evidence](VIRTUAL-BOOT-ENGINE.md).
 
 

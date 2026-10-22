@@ -1,7 +1,10 @@
 //! Developer-only safe, virtual media CLI; never accepts a target disk,
 //! existing output file, partition handle, or USB device path.
 use bootnexa_agent::{
-    iso_inspect::inspect, partition_layout::Scheme, virtual_boot_media::VirtualBootMedia,
+    iso_inspect::inspect,
+    iso_tree::{classify, enumerate},
+    partition_layout::Scheme,
+    virtual_boot_media::VirtualBootMedia,
 };
 use serde_json::json;
 use std::{
@@ -21,6 +24,41 @@ fn run() -> Result<(), Box<dyn Error>> {
             if !meta.is_file(){return Err("ISO input must be a regular file".into());}
             let report=inspect(&mut file,meta.len())?;
             println!("{}",serde_json::to_string(&report)?);
+        }
+        [op, source] if op == "plan-iso" => {
+            let mut input=File::open(source)?;
+            let metadata=input.metadata()?;
+            if !metadata.is_file(){return Err("ISO source must be a regular file".into());}
+            let tree=enumerate(&mut input,metadata.len())?;
+            println!("{}",json!({"readOnly":true,"physicalWriteAuthorized":false,
+                "plan":classify(&tree),"files":tree.files}));
+        }
+        [op, source, output_dir] if op == "build-from-iso" => {
+            let mut input=File::open(source)?;
+            let metadata=input.metadata()?;
+            if !metadata.is_file(){return Err("ISO source must be a regular file".into());}
+            if metadata.len()>256*1024*1024 {
+                return Err("virtual ISO input exceeds 256MiB qualification cap".into());
+            }
+            let tree=enumerate(&mut input,metadata.len())?;
+            let plan=classify(&tree);
+            if !plan.virtual_efi_eligible {
+                return Err(format!("ISO is not qualified for virtual EFI extraction: {}",plan.reason).into());
+            }
+            let dir=PathBuf::from(output_dir);
+            if !fs::symlink_metadata(&dir)?.file_type().is_dir(){
+                return Err("destination must be an existing real directory".into());
+            }
+            let dir=fs::canonicalize(dir)?;
+            let mut disk=VirtualBootMedia::new(96*1024*1024,Scheme::Gpt)?;
+            let report=disk.populate_from_iso(&mut input,&tree)?;
+            let destination=dir.join(format!("bootnexa-virtual-{}.img",Uuid::new_v4().simple()));
+            let mut output=OpenOptions::new().read(true).write(true).create_new(true).open(&destination)?;
+            if !output.metadata()?.is_file(){return Err("virtual output must be a regular file".into());}
+            let digest=disk.export_to_regular_file(&mut output)?;
+            println!("{}",json!({"virtualOnly":true,"physicalWriteAuthorized":false,
+                "outputPath":destination.to_string_lossy(),"outputSha256":digest,
+                "sourcePlan":plan,"media":report}));
         }
         [op,source,output_dir,scheme] if op=="build-virtual" =>{
             let scheme=match scheme.as_str() {
@@ -56,7 +94,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 "outputSha256":digest,"media":report
             }));
         }
-        _=>return Err("usage: bootnexa-media inspect-iso <local-ISO-file> | build-virtual <EFI-app-file> <real-output-directory> gpt|mbr".into())
+        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | plan-iso <ISO> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
     }
     Ok(())
 }

@@ -49,3 +49,7 @@ A developer-only broker one-shot watchdog now bounds blocking Windows pipe opera
 ## File-backed bootable media engine v0.4
 
 The [virtual-only partition/EFI engine](VIRTUAL-BOOT-ENGINE.md) can produce an anonymous GPT/MBR+FAT32 image, validate both GPT copies and reopen/read back an EFI payload. Neither it nor ISO inspection qualifies physical-media target consent, authoritative protected-role ancestry, exclusive locks or device flush semantics. Physical writing is still disabled.
+
+## Bounded ISO-to-virtual EFI qualification (not physical media)
+
+The virtual-only [ISO9660 conversion prototype](ISO-TO-VIRTUAL-PIPELINE.md) checks file extents, stream hashes, FAT32 content and synthetic QEMU EFI boot. These checks do not authorize or implement any physical device opening, erasing or USB write. Real hardware safety requirements remain open.
