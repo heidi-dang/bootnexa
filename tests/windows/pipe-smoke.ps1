@@ -62,3 +62,6 @@ if ($LASTEXITCODE -eq 0){throw 'Client accepted arbitrary named pipe'}
 $bad= & $broker --write-disk 0 2>&1
 if ($LASTEXITCODE -ne 2){throw 'Broker CLI accepted write operation'}
 Write-Host 'PASS: read-only named pipe rejects every destructive request variant.'
+# Expected negative cases leave a nonzero native LASTEXITCODE. Clear it only after
+# every assertion above succeeded; any thrown test failure remains fatal.
+$global:LASTEXITCODE = 0
