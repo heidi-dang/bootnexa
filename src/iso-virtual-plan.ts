@@ -92,6 +92,7 @@ export async function inspectVirtualIsoPlan(file:File):Promise<VirtualIsoPlan> {
       const path=prefix?prefix+'/'+entry.name:entry.name;
       if(path.length>240 || names.has(path))throw new Error('ISO path alias or duplicate name.');
       names.add(path);
+      if(names.size>MAX_FILES)throw new Error('ISO directory entry count exceeds bounded planner limit.');
       if(entry.isDirectory){
         if(depth>=8)throw new Error('ISO path depth exceeds supported limit.');
         pending.push([path,entry.offset,entry.length,depth+1]);

@@ -222,6 +222,9 @@ pub fn enumerate<R: Read + Seek>(r: &mut R, length: u64) -> Result<IsoTree, Tree
             if path.len() > 240 || !names.insert(path.clone()) {
                 return Err(TreeError::Unsupported);
             }
+            if names.len() > MAX_ENTRIES {
+                return Err(TreeError::Capacity);
+            }
             if entry.directory {
                 if depth >= MAX_DEPTH {
                     return Err(TreeError::Capacity);
@@ -408,6 +411,30 @@ pub(crate) mod tests {
         let extent = 24 * 2048 + 10;
         dual(&mut bytes[extent..extent + 8], u32::MAX);
         assert!(enumerate(&mut Cursor::new(&bytes), bytes.len() as u64).is_err());
+    }
+    #[test]
+    fn excessive_empty_directory_entries_fail_closed() {
+        let mut image = fixture();
+        image.resize(1200 * 2048, 0);
+        let pvd = 16 * 2048;
+        dual(&mut image[pvd + 156 + 10..pvd + 156 + 18], 64 * 1024);
+        let root_start = 22 * 2048;
+        image[root_start..root_start + 64 * 1024].fill(0);
+        let mut pos = root_start;
+        for i in 0..=MAX_ENTRIES {
+            let name = format!("D{i:04}");
+            let entry = rec((600 + i) as u32, 2048, name.as_bytes(), true);
+            let within = (pos - root_start) % 2048;
+            if within + entry.len() > 2048 {
+                pos += 2048 - within;
+            }
+            image[pos..pos + entry.len()].copy_from_slice(&entry);
+            pos += entry.len();
+        }
+        assert!(matches!(
+            enumerate(&mut Cursor::new(&image), image.len() as u64),
+            Err(TreeError::Capacity)
+        ));
     }
     #[test]
     fn rejects_duplicate_alias_and_untrusted_user_name() {
