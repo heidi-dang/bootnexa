@@ -33,3 +33,7 @@ The project must not merge physical disk-write implementation into an enabled-by
 ## Current preparatory read-only identity work
 
 The [read-only Windows safety probe](WINDOWS-SAFETY-PROBE.md) independently collects and compares Storage/CIM metadata in two observations. Its explicit incomplete-role and native-extent risk codes are **not** approvals. It is not elevated, not distributed in the end-user installer and has no disk-write handler. The actual helper, Windows SetupAPI/IOCTL volume ancestry and sacrificial hardware qualification in this checklist remain blocked.
+
+## Protected-volume risk propagation (advisory only)
+
+[The protected-volume graph](PROTECTED-ANCESTRY-HELPER-CONTRACT.md) now propagates observed boot/system/partition protected roles through shared volume-extent parent disks, while failing closed when role/extent evidence is incomplete. The verified-peer helper protocol is a Rust **test-only specification**, not an OS-authenticated privileged service. Real hardware and code-signing release gates remain open.

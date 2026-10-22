@@ -88,6 +88,24 @@ try {
         }
       }
     }
+    # Protected-role graph: no false write authorization, even when mappings agree.
+    $protected = $safety.protectedAncestry
+    if (-not $protected -or -not $protected.readOnly -or $protected.physicalWriteAuthorized) {
+      throw 'Protected-volume graph unexpectedly authorized writing'
+    }
+    if ($protected.protectedRoleEvidenceComplete) {
+      throw 'Unimplemented crashdump/hibernation ancestry was certified complete'
+    }
+    if (@($protected.disks).Count -ne @($safety.findings).Count) {
+      throw 'Protected-volume evidence does not correspond to enumerated disks'
+    }
+    foreach ($entry in @($protected.disks)) {
+      if ($entry.ancestryVerifiedForWriting -or $entry.physicalWriteAuthorized -or
+          $entry.riskCodes -notcontains 'protected_roles_unverified') {
+        throw 'Incomplete Windows protected-volume role evidence was accepted'
+      }
+    }
+    Write-Host 'PASS: read-only protected-volume propagation/role evidence remains fail-closed.'
     Write-Host "PASS: native read-only SetupAPI/IOCTL ancestry ($($native.diskInterfaces) interfaces, $($native.scannedVolumes) volumes, $($native.mappedExtents) extents), no write authority."
     Write-Host "PASS: separate read-only Windows safety probe verified $(@($safety.findings).Count) disk finding(s), no write authority."
   }

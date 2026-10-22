@@ -234,3 +234,7 @@ BootNexa now includes a **separate developer/CI-only Windows Storage/CIM probe**
 ### Native read-only Windows ancestry evidence
 
 The Windows developer-only safety probe now corroborates Storage/CIM observations with SetupAPI disk-interface enumeration and read-only Storage IOCTL volume extents. Missing mappings, multi-disk extents and topology drift are reported conservatively. The installed agent remains unprivileged with no disk-write routes. See [Windows safety evidence](doc/WINDOWS-SAFETY-PROBE.md).
+
+### Protected-volume ancestry safety milestone
+
+The developer-only native safety probe now correlates Windows Storage/CIM protected-role observations with native volume-to-disk extents. Shared multi-disk volumes propagate protected ancestry across their parent disks, and incomplete role information remains a hard denial. A separately tested, HMAC-authenticated **read-only helper protocol contract** validates nonce/expiry/replay rules; it is **not** a running Windows pipe, elevated process, installed helper or disk-write permission. See [the security contract](doc/PROTECTED-ANCESTRY-HELPER-CONTRACT.md). Real USB writing remains disabled.

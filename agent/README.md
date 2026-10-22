@@ -85,3 +85,7 @@ The standalone bootnexa-jobsim CLI provides virtual-demo, virtual-corrupt, virtu
 ## Windows read-only safety probe (developer/CI only)
 
 On Windows, run the release binary bootnexa-safety-probe.exe with --probe after the Rust release build to compare two fresh read-only Storage/CIM snapshots. The CLI has no target argument, grants no write permission, never elevates and does not ship in the end-user installer. Its report always says physicalWriteAuthorized: false, even for two matching observations; native Windows Storage IOCTL extent mapping, privileged helper, destructive per-device consent and hardware qualification are still unimplemented. See [safety probe architecture](../doc/WINDOWS-SAFETY-PROBE.md).
+
+## Protected-volume graph and helper protocol contract
+
+The native developer safety probe reports an additional `protectedAncestry` object containing conservative per-disk protected-volume propagation and role-evidence denial status, without paths or serials. The future signed helper protocol's challenge/MAC/anti-replay contract is currently **test-only**: there is no elevated service, named pipe or disk-mutation handler. See [protection and helper limits](../doc/PROTECTED-ANCESTRY-HELPER-CONTRACT.md).
