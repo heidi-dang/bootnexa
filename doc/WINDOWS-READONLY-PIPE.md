@@ -20,3 +20,11 @@ Windows CI executes `tests/windows/pipe-smoke.ps1` against the real release-buil
 ## Pipe lifecycle detail
 
 After writing the length-prefixed report, the broker calls Win32 FlushFileBuffers **on the named pipe** to ensure the client has drained its response before DisconnectNamedPipe destroys buffered data. This is local IPC synchronization; it is NOT a USB storage flush, disk write, or a relaxation of Windows process/token authentication.
+
+## Adversarial Windows hardening milestone (developer-only)
+
+The read-only one-shot broker has a bounded overall **30-second** lifetime, including blocked Win32 ConnectNamedPipe, ReadFile, the diagnostic safety-report provider and pipe-only FlushFileBuffers. The diagnostic command supports a **test-only bounded deadline override** between 750 ms and 30 seconds. A watchdog exits the one-shot process with status 124 on expiry; blocked synchronous Win32 operations cannot outlive the process. This is fail-closed but is **not equivalent** to a production service using cancelable overlapped I/O.
+
+The Windows CI adversarial acceptance creates an ephemeral temporary local Windows user, obtains its real Windows logon token and impersonates that user to attempt native CreateFile access to the currently active protected named pipe. Access must fail with ACCESS_DENIED (5); the temporary user is removed in a finally block. A separately restricted low-integrity token must likewise be denied writable pipe access. The original same-user client must still retrieve a read-only report. Independently, the one-shot watchdog is checked against no-client, silent-client and partial-frame stalls; all must exit 124 inside a bounded test window.
+
+This proves only the specific temporary-user and low-integrity token cases on the GitHub Windows runner. It does not establish a complete Windows security review, signed executable identity, production-safe deadline cancellation or destructive operation authority. **Real USB writing remains disabled.**
