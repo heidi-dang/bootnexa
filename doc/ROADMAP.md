@@ -1,6 +1,6 @@
 # BootNexa — implementation roadmap
 
-> **Status:** Implementation tracking · 21 October 2026
+> **Status:** Implementation tracking · 23 October 2026
 > **Target:** A safe, web-first bootable-media workstation with a locally installed native agent.  
 > **Rufus baseline:** 4.15 (30 June 2026), verified against https://rufus.ie/  
 > **Owner:** BootNexa maintainers
@@ -23,7 +23,7 @@ The first supported operating system is Windows 10/11 on x64; Windows on Arm and
 
 ## Current repository state
 
-The repository now includes a responsive React UI, local image file picker, a read-only Rust Windows companion agent, automatic localhost discovery, native Windows Yes/No access prompt, Windows CI coverage, and a per-user installer with **CI-only test signing**. A publicly trusted production signature and physical Windows USB qualification remain pending. Phase 3A adds process-scoped opaque USB display identities, conservative boot/system partition exclusion, and failure-closed ambiguous-device filtering (see [Phase 3A device safety](PHASE-3-DEVICE-SAFETY.md)). These safeguards are **read-only and are not destructive-operation authority**. There is still **no** privileged disk writer, durable job engine, USB erase/format/partition operation, or verified bootable media output. The "Start writing" button intentionally stays disabled.
+The repository includes a React ISO inspection UI, a read-only Rust Windows agent with approved device discovery, conservative protected-disk inventory, read-only native safety probes, Windows CI and a per-user installer with **CI-only test signing**. The SQLite-backed **simulation-only** job engine and file-backed raw imaging verification now exist; anonymous virtual GPT/MBR/FAT32/EFI image creation and developer-only ISO conversion are separately tested. An **exact-hash-pinned Alpine Linux 3.24.2 virtual ISO** has been booted to a Linux login in QEMU/OVMF; a new CI-only evidence-receipt generator and negative tests are implemented but require fresh CI qualification ([scope](ALPINE-VIRTUAL-QUALIFICATION.md)). None of these imply physical USB boot or installer qualification. **No privileged physical writer, native disk locking, USB erase/format/partition operation, production-trusted code signing, or sacrificial hardware acceptance is complete.** The user-visible physical 'Start writing' action remains disabled. See [physical release gates](PHYSICAL-WRITE-RELEASE-GATES.md).
 
 ## Release sequence
 
