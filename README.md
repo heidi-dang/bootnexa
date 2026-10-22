@@ -242,3 +242,7 @@ The developer-only native safety probe now correlates Windows Storage/CIM protec
 ### Windows local read-only named-pipe qualification
 
 An independently built **developer-only** one-shot Windows pipe broker now exercises local process-token validation, a restricted SID ACL, a random challenge and the preexisting read-only safety report. It is neither installed nor elevated and accepts no destructive operation. See [security boundary](doc/WINDOWS-READONLY-PIPE.md).
+
+### v0.4 virtual-media engine (developer-only)
+
+A pure regular-file GPT/MBR + FAT32 builder can create a 96 MiB virtual EFI boot image and verify GPT metadata and the EFI payload read-back. A bounded read-only ISO9660 / UDF recognition / El Torito inspector is also available; external ISO extraction, Windows/Linux installers and real USB operations are not yet supported. See [virtual boot engine](doc/VIRTUAL-BOOT-ENGINE.md) and [physical safety gates](doc/PHYSICAL-WRITE-RELEASE-GATES.md).

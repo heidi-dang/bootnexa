@@ -20,3 +20,9 @@ mod protected_ancestry_tests;
 
 #[cfg(windows)]
 pub mod safety_report;
+
+pub mod partition_layout;
+
+pub mod virtual_boot_media;
+
+pub mod iso_inspect;

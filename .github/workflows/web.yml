@@ -21,6 +21,17 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:smoke -- --workers=1
 
+  uefi_boot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install QEMU and open-source OVMF firmware
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf
+      - name: Generate and actually boot the virtual EFI media
+        run: bash ./tests/virtual-media/boot-ovmf.sh
+
   rust:
     strategy:
       fail-fast: false
