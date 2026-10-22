@@ -7,7 +7,7 @@ mod windows {
     use std::{
         ffi::c_void,
         io::{self, Write},
-        mem::{size_of, zeroed},
+        mem::size_of,
         ptr::{null, null_mut},
         slice,
     };
