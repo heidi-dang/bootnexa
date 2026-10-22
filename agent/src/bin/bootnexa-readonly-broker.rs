@@ -10,6 +10,9 @@ mod windows {
         mem::size_of,
         ptr::{null, null_mut},
         slice,
+        sync::mpsc,
+        thread,
+        time::Duration,
     };
     type Handle = *mut c_void;
     const INVALID: Handle = !0usize as Handle;
@@ -25,6 +28,9 @@ mod windows {
     const FILE_SHARE_NONE: u32 = 0;
     const OPEN_EXISTING: u32 = 3;
     const MAX_REPORT: usize = 1024 * 1024;
+    const DEFAULT_DEADLINE_MS: u64 = 30_000;
+    const MIN_DEADLINE_MS: u64 = 750;
+
     const PROTOCOL_MAGIC: &[u8; 4] = b"BNX1";
     #[repr(C)]
     struct SecurityAttributes {
@@ -327,7 +333,42 @@ mod windows {
     fn denied(operation: u8) -> bool {
         operation != 1
     }
-    async fn serve() -> io::Result<()> {
+    // Synchronous Win32 ConnectNamedPipe, ReadFile, and FlushFileBuffers can
+    // otherwise block forever on a malicious peer. A bounded one-shot process
+    // watchdog fails closed even if an OS call never returns. This does NOT
+    // replace reviewed overlapped I/O / cancellation in a production service.
+    struct DeadlineGuard {
+        disarm: mpsc::Sender<()>,
+        watcher: Option<thread::JoinHandle<()>>,
+    }
+    impl DeadlineGuard {
+        fn start(duration_ms: u64) -> Self {
+            let (disarm, receiver) = mpsc::channel::<()>();
+            let watcher = thread::spawn(move || {
+                if receiver
+                    .recv_timeout(Duration::from_millis(duration_ms))
+                    .is_err()
+                {
+                    eprintln!("read-only pipe overall deadline exceeded");
+                    std::process::exit(124);
+                }
+            });
+            Self {
+                disarm,
+                watcher: Some(watcher),
+            }
+        }
+    }
+    impl Drop for DeadlineGuard {
+        fn drop(&mut self) {
+            let _ = self.disarm.send(());
+            if let Some(watcher) = self.watcher.take() {
+                let _ = watcher.join();
+            }
+        }
+    }
+    async fn serve(deadline_ms: u64) -> io::Result<()> {
+        let _deadline = DeadlineGuard::start(deadline_ms);
         let self_token = process_token(None)?;
         let owner = user_sid(self_token.0)?;
         let descriptor = secure_descriptor(&owner)?;
@@ -415,6 +456,13 @@ mod windows {
         if &hello[..4] != PROTOCOL_MAGIC {
             return Err(io::Error::other("unsupported protocol"));
         }
+        if mode == "--client-stall" || mode == "--client-partial" {
+            if mode == "--client-partial" {
+                write_all(pipe.0, &PROTOCOL_MAGIC[..2])?;
+            }
+            thread::sleep(Duration::from_secs(3));
+            return Ok(());
+        }
         let mut req = [0u8; 21];
         req[..4].copy_from_slice(PROTOCOL_MAGIC);
         req[4] = if mode == "--client-invalid-op" { 2 } else { 1 };
@@ -434,7 +482,7 @@ mod windows {
             return Err(io::Error::other("invalid response length"));
         }
         let mut data = vec![0u8; len];
-        // Message-mode pipes need one read per message, not partial ReadFile.
+        // Strict byte-stream read: no OS message-boundary assumptions.
         read_fixed(pipe.0, &mut data)?;
         let value: serde_json::Value = serde_json::from_slice(&data).map_err(io::Error::other)?;
         if value["physicalWriteAuthorized"] != false
@@ -457,13 +505,19 @@ mod windows {
     pub async fn run() {
         let args = std::env::args().skip(1).collect::<Vec<_>>();
         let result = match args.as_slice() {
-            [flag] if flag == "--serve-once" => serve().await,
+            [flag] if flag == "--serve-once" => serve(DEFAULT_DEADLINE_MS).await,
+            [flag, value] if flag == "--serve-once-deadline-ms" => match value.parse::<u64>() {
+                Ok(ms) if (MIN_DEADLINE_MS..=DEFAULT_DEADLINE_MS).contains(&ms) => serve(ms).await,
+                _ => Err(io::Error::other("invalid one-shot deadline")),
+            },
             [flag, name]
                 if [
                     "--client",
                     "--client-invalid-op",
                     "--client-bad-nonce",
                     "--client-invalid-version",
+                    "--client-stall",
+                    "--client-partial",
                 ]
                 .contains(&flag.as_str()) =>
             {

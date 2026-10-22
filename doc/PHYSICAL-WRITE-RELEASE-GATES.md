@@ -41,3 +41,7 @@ The [read-only Windows safety probe](WINDOWS-SAFETY-PROBE.md) independently coll
 ## Developer-only one-shot read-only Windows pipe
 
 The Windows safety diagnostics now have an [experimental local named-pipe boundary](WINDOWS-READONLY-PIPE.md) using process/token SID verification and an ephemeral challenge. This is not a privileged writer, signed client identity, hardened service or destructively authorized plan. All physical USB write gates remain open.
+
+## Bounded read-only IPC and real Windows caller negative tests
+
+A developer-only broker one-shot watchdog now bounds blocking Windows pipe operations and a separate Windows CI suite tests denied different-user and low-integrity impersonation tokens, plus stalled/partial requests. This does **not** replace a separately reviewed elevated helper, signed-client identity, kernel-enforced per-I/O cancellation or physical-device qualification.
