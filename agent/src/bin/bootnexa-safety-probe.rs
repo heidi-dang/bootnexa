@@ -1,6 +1,8 @@
 //! BootNexa read-only Windows safety probe.
 //! This is NOT an elevated process or a device writer; no physical disk
 //! handles are opened, no target can be supplied and no approvals are issued.
+#[cfg(windows)]
+use bootnexa_agent::protected_ancestry::{ProtectionReport, assess_protection};
 use bootnexa_agent::safety::SafetyReport;
 #[cfg(windows)]
 use bootnexa_agent::{
@@ -15,6 +17,8 @@ struct Report {
     safety: SafetyReport,
     #[cfg(windows)]
     native_ancestry: NativeAncestryReport,
+    #[cfg(windows)]
+    protected_ancestry: ProtectionReport,
 }
 #[cfg(windows)]
 async fn run() -> Result<Report, &'static str> {
@@ -29,6 +33,7 @@ async fn run() -> Result<Report, &'static str> {
     let native_second = capture_native();
     let disks = first.disks.iter().map(|d| d.number).collect();
     let native = assess_native(&disks, &native_first, &native_second);
+    let protection = assess_protection(&first, &second, &native_first, &native_second);
     let mut safety = assess_snapshots(&first, &second);
     // Native ancestry is essential to reliable status; an incomplete or
     // changing native observation invalidates a "stable" safety finding.
@@ -41,6 +46,7 @@ async fn run() -> Result<Report, &'static str> {
     Ok(Report {
         safety,
         native_ancestry: native,
+        protected_ancestry: protection,
     })
 }
 #[cfg(not(windows))]
