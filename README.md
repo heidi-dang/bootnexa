@@ -246,3 +246,7 @@ An independently built **developer-only** one-shot Windows pipe broker now exerc
 ### v0.4 virtual-media engine (developer-only)
 
 A pure regular-file GPT/MBR + FAT32 builder can create a 96 MiB virtual EFI boot image and verify GPT metadata and the EFI payload read-back. A bounded read-only ISO9660 / UDF recognition / El Torito inspector is also available; external ISO extraction, Windows/Linux installers and real USB operations are not yet supported. See [virtual boot engine](doc/VIRTUAL-BOOT-ENGINE.md) and [physical safety gates](doc/PHYSICAL-WRITE-RELEASE-GATES.md).
+
+### Experimental ISO-to-virtual EFI media
+
+Read-only ISO planning and small ISO9660 x64 EFI extraction to a GPT/FAT32 **regular-file virtual image** are available from the developer-only CLI. Windows/Linux installer profiles are intentionally rejected pending OS-specific support. There is no physical USB write handler or signed public release. See [ISO-to-virtual limitations and verification](doc/ISO-TO-VIRTUAL-PIPELINE.md).

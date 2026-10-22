@@ -11,6 +11,19 @@ use std::{
     io::{self, Read, Seek, SeekFrom, Write},
 };
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IsoCopyReport {
+    pub virtual_only: bool,
+    pub physical_write_authorized: bool,
+    pub windows_setup_verified: bool,
+    pub linux_boot_verified: bool,
+    pub boot_execution_verified: bool,
+    pub full_partition_table_verified: bool,
+    pub source_files: usize,
+    pub verified_files: usize,
+    pub verified_bytes: u64,
+}
 const MAX_PAYLOAD: usize = 8 * 1024 * 1024;
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -233,6 +246,117 @@ impl VirtualBootMedia {
         }
         Ok(hex::encode(expected))
     }
+
+    /// Copy an entire explicitly supported ISO9660 file tree to an anonymous
+    /// FAT32 virtual disk. Never accepts a host OS block device or file path.
+    /// Windows/Linux installer candidates fail closed until independently
+    /// boot-qualified. All copied files get SHA-256 source/readback equality.
+    pub fn populate_from_iso<R: Read + Seek>(
+        &mut self,
+        iso: &mut R,
+        tree: &crate::iso_tree::IsoTree,
+    ) -> Result<IsoCopyReport, MediaError> {
+        let plan = crate::iso_tree::classify(tree);
+        if !plan.virtual_efi_eligible || tree.files.is_empty() {
+            return Err(MediaError::Corrupt);
+        }
+        let boot = tree
+            .files
+            .iter()
+            .find(|f| f.path == "EFI/BOOT/BOOTX64.EFI")
+            .ok_or(MediaError::Corrupt)?;
+        if boot.length == 0 || boot.length > MAX_PAYLOAD as u64 {
+            return Err(MediaError::Capacity);
+        }
+        let mut efi = vec![0u8; boot.length as usize];
+        iso.seek(SeekFrom::Start(boot.offset))?;
+        iso.read_exact(&mut efi)?;
+        self.add_efi_application(&efi)?;
+        let mut hashes = std::collections::BTreeMap::<String, String>::new();
+        hashes.insert(boot.path.clone(), hex::encode(Sha256::digest(&efi)));
+        let mut directories =
+            std::collections::HashSet::from([String::from("EFI"), String::from("EFI/BOOT")]);
+        {
+            let view = PartitionView::new(&mut self.file, &self.layout);
+            let fs = FileSystem::new(view, FsOptions::new())?;
+            let root = fs.root_dir();
+            for entry in &tree.files {
+                if entry.path == boot.path {
+                    continue;
+                }
+                let mut parents = String::new();
+                let mut components = entry.path.split('/').peekable();
+                while let Some(component) = components.next() {
+                    if components.peek().is_none() {
+                        break;
+                    }
+                    if !parents.is_empty() {
+                        parents.push('/');
+                    }
+                    parents.push_str(component);
+                    if directories.insert(parents.clone()) {
+                        root.create_dir(&parents)?;
+                    }
+                }
+                let mut output = root.create_file(&entry.path)?;
+                iso.seek(SeekFrom::Start(entry.offset))?;
+                let mut remaining = entry.length;
+                let mut digest = Sha256::new();
+                let mut buffer = [0u8; 64 * 1024];
+                while remaining > 0 {
+                    let amount = remaining.min(buffer.len() as u64) as usize;
+                    iso.read_exact(&mut buffer[..amount])?;
+                    output.write_all(&buffer[..amount])?;
+                    digest.update(&buffer[..amount]);
+                    remaining -= amount as u64;
+                }
+                output.flush()?;
+                hashes.insert(entry.path.clone(), hex::encode(digest.finalize()));
+            }
+            drop(root);
+            fs.unmount()?;
+        }
+        self.file.sync_all()?;
+        verify_partition_table(&mut self.file, &self.layout)?;
+        {
+            let view = PartitionView::new(&mut self.file, &self.layout);
+            let fs = FileSystem::new(view, FsOptions::new())?;
+            if fs.fat_type() != FatType::Fat32 {
+                return Err(MediaError::Corrupt);
+            }
+            let root = fs.root_dir();
+            let mut buffer = [0u8; 64 * 1024];
+            for entry in &tree.files {
+                let mut src = root.open_file(&entry.path)?;
+                let mut remaining = entry.length;
+                let mut digest = Sha256::new();
+                while remaining > 0 {
+                    let amount = remaining.min(buffer.len() as u64) as usize;
+                    src.read_exact(&mut buffer[..amount])?;
+                    digest.update(&buffer[..amount]);
+                    remaining -= amount as u64;
+                }
+                let mut excess = [0u8; 1];
+                if src.read(&mut excess)? != 0
+                    || hashes.get(&entry.path).map(String::as_str)
+                        != Some(hex::encode(digest.finalize()).as_str())
+                {
+                    return Err(MediaError::Corrupt);
+                }
+            }
+        }
+        Ok(IsoCopyReport {
+            virtual_only: true,
+            physical_write_authorized: false,
+            windows_setup_verified: false,
+            linux_boot_verified: false,
+            boot_execution_verified: false,
+            full_partition_table_verified: true,
+            source_files: tree.files.len(),
+            verified_files: tree.files.len(),
+            verified_bytes: tree.total_bytes,
+        })
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -246,6 +370,38 @@ mod tests {
         bytes[0x98..0x9a].copy_from_slice(&0x20bu16.to_le_bytes());
         bytes[0x98 + 68..0x98 + 70].copy_from_slice(&10u16.to_le_bytes());
         bytes
+    }
+    #[test]
+    fn entire_iso9660_file_tree_can_be_extracted_and_reverified() {
+        use std::io::Cursor;
+        let image = crate::iso_tree::tests::fixture();
+        let mut iso = Cursor::new(&image);
+        let tree = crate::iso_tree::enumerate(&mut iso, image.len() as u64).unwrap();
+        assert!(crate::iso_tree::classify(&tree).virtual_efi_eligible);
+        let mut virtual_media = VirtualBootMedia::new(96 * 1024 * 1024, Scheme::Gpt).unwrap();
+        let report = virtual_media.populate_from_iso(&mut iso, &tree).unwrap();
+        assert_eq!(report.verified_files, tree.files.len());
+        assert_eq!(report.verified_bytes, tree.total_bytes);
+        assert!(!report.physical_write_authorized);
+        assert_eq!(
+            virtual_media.read_efi_application().unwrap(),
+            image[30 * 2048..32 * 2048]
+        );
+        let mut copy = tempfile::tempfile().unwrap();
+        virtual_media.export_to_regular_file(&mut copy).unwrap();
+        assert_eq!(copy.metadata().unwrap().len(), 96 * 1024 * 1024);
+        let mut unsupported = tree.clone();
+        unsupported.files.push(crate::iso_tree::IsoFile {
+            path: "SOURCES/INSTALL.WIM".into(),
+            offset: 0,
+            length: 1,
+        });
+        assert!(!crate::iso_tree::classify(&unsupported).virtual_efi_eligible);
+        assert!(
+            virtual_media
+                .populate_from_iso(&mut iso, &unsupported)
+                .is_err()
+        );
     }
     #[test]
     fn virtual_gpt_and_mbr_fat32_efi_roundtrip() {

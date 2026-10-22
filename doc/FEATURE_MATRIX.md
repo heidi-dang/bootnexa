@@ -19,6 +19,7 @@ This file is the public record for supported, planned and explicitly unsupported
 | Activity | Opt-in read-only simulated job list | 0.3 | Development | Authenticated history, disabled feed and no write routes |
 | IPC | Developer-only Windows one-shot named pipe with OS token identity, read-only report | 0.3 | Development | Windows live accept/reject, nonce/version negative cases, installer exclusion |
 | Virtual media | GPT/MBR creation, FAT32 EFI application + payload read-back | 0.4 | Virtual-only | GPT CRCs, PE guards, QEMU/OVMF boot gate |
+| ISO virtual copy | Bounded plain ISO9660 x64 EFI tree to GPT/FAT32 virtual image | 0.4 | Experimental (file only) | Hash each file and full FAT32 re-read; OVMF boot of synthetic ISO fixture, invalid/unsupported rejection |
 | ISO | ISO9660/UDF signatures and El Torito catalog inspection | 0.4 | Limited read-only | Invalid descriptor, catalog and truncation tests |
 | Safety | Protected-volume ancestry propagation and test-only authenticated helper protocol | 0.3 | Development | Multi-disk parent propagation, incomplete role denial, replay/tamper/expiry negative cases |
 | Safety | Standalone read-only Windows device identity/topology probe (no elevation) | 0.3 | Development | Windows Storage/CIM live smoke, duplicate/mutated identity fixtures, fail-closed policy |

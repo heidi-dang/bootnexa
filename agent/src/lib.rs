@@ -26,3 +26,5 @@ pub mod partition_layout;
 pub mod virtual_boot_media;
 
 pub mod iso_inspect;
+
+pub mod iso_tree;
