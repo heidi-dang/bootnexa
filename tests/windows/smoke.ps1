@@ -43,6 +43,36 @@ try {
   Assert-Status '/v1/format' 404 POST $expectedOrigin
   Assert-Status '/v1/erase' 404 POST $expectedOrigin
 
+  # Developer-build smoke requires the separate read-only probe, whereas
+  # installer acceptance must prove this developer binary is NOT distributed.
+  $probe = Join-Path (Split-Path -Parent $binary) 'bootnexa-safety-probe.exe'
+  if ($BinaryPath) {
+    if (Test-Path -LiteralPath $probe) {
+      throw 'Developer safety probe was unexpectedly shipped in the per-user installer'
+    }
+    Write-Host 'PASS: installed agent has no additional safety-probe executable or elevated broker.'
+  } else {
+    if (-not (Test-Path -LiteralPath $probe)) { throw 'Read-only safety probe binary was not built' }
+    $probeResult = & $probe --probe
+    if ($LASTEXITCODE -ne 0) { throw 'Read-only Windows safety probe failed closed' }
+    $safety = ($probeResult | Out-String) | ConvertFrom-Json
+    if (-not $safety.readOnly -or $safety.physicalWriteAuthorized -or $safety.snapshotCount -ne 2) {
+      throw 'Windows safety probe advertised unsafe capabilities'
+    }
+    foreach ($finding in @($safety.findings)) {
+      if ($finding.physicalWriteAuthorized -or -not $finding.diagnosticTag.StartsWith('diag-')) {
+        throw 'Unsafe per-disk safety finding'
+      }
+      if ($finding.riskCodes -notcontains 'native_volume_extents_unverified') {
+        throw 'Windows safety probe must retain native IOCTL volume-extent release gate'
+      }
+    }
+    Write-Host "PASS: separate read-only Windows safety probe verified $(@($safety.findings).Count) disk finding(s), no write authority."
+  }
+  Assert-Status '/v1/safety/probe' 404 GET $expectedOrigin
+  Assert-Status '/v1/safety/authorize' 404 POST $expectedOrigin
+  Assert-Status '/v1/disk/write' 404 POST $expectedOrigin
+
   # Genuine Windows Storage API read-only query; no USB fixture/device writes.
   $disks = @(Get-Disk -ErrorAction Stop)
   Write-Host "Actual Windows Get-Disk succeeded (inventory entries: $($disks.Count)); no write operation."
