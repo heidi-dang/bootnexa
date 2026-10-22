@@ -230,3 +230,7 @@ The Rust simulator now performs actual bounded byte copies into **anonymous regu
 ### Read-only Windows safety probe
 
 BootNexa now includes a **separate developer/CI-only Windows Storage/CIM probe** to compare two read-only snapshots of device identity, partitions and protected-volume evidence. It reports ambiguities and changed topology but **never grants destructive authority**. The per-user installer does not ship the probe as a privileged service, and there are still no disk-write endpoints or elevation prompts for writing. See [Windows safety probe architecture](doc/WINDOWS-SAFETY-PROBE.md), [hardware release gates](doc/PHYSICAL-WRITE-RELEASE-GATES.md) and [signing blocker](https://github.com/heidi-dang/bootnexa/issues/5).
+
+### Native read-only Windows ancestry evidence
+
+The Windows developer-only safety probe now corroborates Storage/CIM observations with SetupAPI disk-interface enumeration and read-only Storage IOCTL volume extents. Missing mappings, multi-disk extents and topology drift are reported conservatively. The installed agent remains unprivileged with no disk-write routes. See [Windows safety evidence](doc/WINDOWS-SAFETY-PROBE.md).

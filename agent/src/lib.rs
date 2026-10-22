@@ -8,3 +8,7 @@ pub mod safety;
 
 #[cfg(test)]
 mod safety_tests;
+
+pub mod native_ancestry;
+#[cfg(test)]
+mod native_ancestry_tests;
