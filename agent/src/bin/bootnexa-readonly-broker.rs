@@ -96,6 +96,12 @@ mod windows {
             flags: u32,
             template: Handle,
         ) -> Handle;
+        fn SetNamedPipeHandleState(
+            pipe: Handle,
+            mode: *const u32,
+            max_collection: *const u32,
+            collect_timeout: *const u32,
+        ) -> i32;
         fn ReadFile(
             file: Handle,
             buffer: *mut c_void,
@@ -389,8 +395,15 @@ mod windows {
                 null_mut(),
             )
         })?;
+        // CreateFile defaults the client to byte-read mode, even when the
+        // server's pipe TYPE is message. Enforce one exact frame per message.
+        let mode = PIPE_READMODE_MESSAGE;
+        if unsafe { SetNamedPipeHandleState(pipe.0, &mode, null(), null()) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
         let mut hello = [0u8; 20];
-        read_fixed(pipe.0, &mut hello)?;
+        read_fixed(pipe.0, &mut hello)
+            .map_err(|_| io::Error::other("invalid protocol hello message"))?;
         if &hello[..4] != PROTOCOL_MAGIC {
             return Err(io::Error::other("unsupported protocol"));
         }
@@ -406,7 +419,8 @@ mod windows {
         }
         write_all(pipe.0, &req)?;
         let mut prefix = [0u8; 4];
-        read_fixed(pipe.0, &mut prefix)?;
+        read_fixed(pipe.0, &mut prefix)
+            .map_err(|_| io::Error::other("invalid report length message"))?;
         let len = u32::from_le_bytes(prefix) as usize;
         if len == 0 || len > MAX_REPORT {
             return Err(io::Error::other("invalid response length"));
@@ -414,7 +428,8 @@ mod windows {
         let mut data = vec![0u8; len];
         // Message-mode pipes need one read per message, not partial ReadFile.
         for segment in data.chunks_mut(4096) {
-            read_fixed(pipe.0, segment)?;
+            read_fixed(pipe.0, segment)
+                .map_err(|_| io::Error::other("invalid report chunk message"))?;
         }
         let value: serde_json::Value = serde_json::from_slice(&data).map_err(io::Error::other)?;
         if value["physicalWriteAuthorized"] != false
