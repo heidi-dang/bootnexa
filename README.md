@@ -238,3 +238,7 @@ The Windows developer-only safety probe now corroborates Storage/CIM observation
 ### Protected-volume ancestry safety milestone
 
 The developer-only native safety probe now correlates Windows Storage/CIM protected-role observations with native volume-to-disk extents. Shared multi-disk volumes propagate protected ancestry across their parent disks, and incomplete role information remains a hard denial. A separately tested, HMAC-authenticated **read-only helper protocol contract** validates nonce/expiry/replay rules; it is **not** a running Windows pipe, elevated process, installed helper or disk-write permission. See [the security contract](doc/PROTECTED-ANCESTRY-HELPER-CONTRACT.md). Real USB writing remains disabled.
+
+### Windows local read-only named-pipe qualification
+
+An independently built **developer-only** one-shot Windows pipe broker now exercises local process-token validation, a restricted SID ACL, a random challenge and the preexisting read-only safety report. It is neither installed nor elevated and accepts no destructive operation. See [security boundary](doc/WINDOWS-READONLY-PIPE.md).

@@ -89,3 +89,7 @@ On Windows, run the release binary bootnexa-safety-probe.exe with --probe after 
 ## Protected-volume graph and helper protocol contract
 
 The native developer safety probe reports an additional `protectedAncestry` object containing conservative per-disk protected-volume propagation and role-evidence denial status, without paths or serials. The future signed helper protocol's challenge/MAC/anti-replay contract is currently **test-only**: there is no elevated service, named pipe or disk-mutation handler. See [protection and helper limits](../doc/PROTECTED-ANCESTRY-HELPER-CONTRACT.md).
+
+## Windows local read-only IPC (developer and CI only)
+
+The separate bootnexa-readonly-broker executable exposes --serve-once and --client for one authenticated read-only local Windows pipe request. It does not ship with the installer, accept a disk target or grant elevation. CI tests accepted/denied requests. See [read-only IPC](../doc/WINDOWS-READONLY-PIPE.md).
