@@ -1,6 +1,7 @@
 //! Developer-only safe, virtual media CLI; never accepts a target disk,
 //! existing output file, partition handle, or USB device path.
 use bootnexa_agent::{
+    alpine_iso::VerifiedAlpineVirtual,
     hybrid_iso::VirtualHybrid,
     iso_inspect::inspect,
     iso_tree::{classify, enumerate},
@@ -25,6 +26,35 @@ fn run() -> Result<(), Box<dyn Error>> {
             if !meta.is_file(){return Err("ISO input must be a regular file".into());}
             let report=inspect(&mut file,meta.len())?;
             println!("{}",serde_json::to_string(&report)?);
+        }
+        [op, source, output_dir] if op == "build-alpine-virtual" => {
+            // Only the pinned official Alpine virt 3.24.2 x86_64 release.
+            // Exactly-zero physical write authority, file output only.
+            let mut input=File::open(source)?;
+            if !input.metadata()?.is_file() {
+                return Err("Linux ISO input must be a regular file".into());
+            }
+            let mut image=VerifiedAlpineVirtual::from_verified_iso(&mut input)?;
+            let dir=PathBuf::from(output_dir);
+            if !fs::symlink_metadata(&dir)?.file_type().is_dir() {
+                return Err("output directory must exist and not be a symlink/device".into());
+            }
+            let dir=fs::canonicalize(dir)?;
+            let path=dir.join(format!("bootnexa-alpine-virtual-{}.img",Uuid::new_v4().simple()));
+            let mut output=OpenOptions::new().read(true).write(true).create_new(true).open(&path)?;
+            if !output.metadata()?.is_file(){return Err("output must be a regular file".into());}
+            let digest=match image.export_to_regular_file(&mut output) {
+                Ok(value)=>value,
+                Err(error)=>{
+                    drop(output);
+                    let _=fs::remove_file(&path);
+                    return Err(error.into());
+                }
+            };
+            println!("{}",json!({
+                "virtualOnly":true,"physicalWriteAuthorized":false,
+                "outputPath":path.to_string_lossy(),"outputSha256":digest,
+                "media":image.report()}));
         }
         [op, source, output_dir] if op == "build-hybrid-virtual" => {
             // An experimental dual-format GPT/ISO image, not a generalized
@@ -125,7 +155,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 "outputSha256":digest,"media":report
             }));
         }
-        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | plan-iso <ISO> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
+        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | plan-iso <ISO> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-alpine-virtual <verified-Alpine-virt-3.24.2-x86_64.iso> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
     }
     Ok(())
 }

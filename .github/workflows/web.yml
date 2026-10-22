@@ -32,6 +32,17 @@ jobs:
       - name: Generate and actually boot the virtual EFI media
         run: bash ./tests/virtual-media/boot-ovmf.sh
 
+  linux_iso_boot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux virtual-boot test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf
+      - name: Verify official Alpine SHA-256, copy to virtual disk, boot OS
+        run: bash ./tests/virtual-media/alpine-virt-ovmf.sh
+
   rust:
     strategy:
       fail-fast: false

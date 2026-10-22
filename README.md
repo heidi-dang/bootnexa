@@ -254,3 +254,7 @@ Read-only ISO planning and small ISO9660 x64 EFI extraction to a GPT/FAT32 **reg
 ### Dual-format hybrid ISO virtual copy (experimental)
 
 The developer-only `build-hybrid-virtual` command performs sector-perfect anonymous-file copying for a strictly constrained ISO9660 + BootNexa-layout GPT/FAT32 dual-format fixture. Whole-file SHA-256, GPT CRC, matched ISO/ESP EFI payload and QEMU/OVMF synthetic boot checks are required. This does **not** support arbitrary Linux ISO installation media or physical USB writes. Details: [hybrid ISO virtual proof](doc/HYBRID-ISO-VIRTUAL-PROOF.md).
+
+### Exact-release Alpine Linux virtual ISO preflight (experimental)
+
+The developer-only build-alpine-virtual CLI accepts only an exact SHA-256 pinned Alpine virt 3.24.2 x86_64 ISO, validates its real MBR EFI partition and bootloader using bounded read-only FAT I/O, then exports a sector-identical virtual .img with independent SHA-256 read-back. It never opens USB storage or executes an installer. A separate CI gate requires actual Alpine OS boot-to-serial-login in QEMU/OVMF before the profile is considered boot-qualified. See [Alpine virtual-image qualification](doc/ALPINE-VIRTUAL-QUALIFICATION.md).
