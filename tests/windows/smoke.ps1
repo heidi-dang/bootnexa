@@ -50,6 +50,10 @@ try {
     if (Test-Path -LiteralPath $probe) {
       throw 'Developer safety probe was unexpectedly shipped in the per-user installer'
     }
+    $broker = Join-Path (Split-Path -Parent $binary) 'bootnexa-readonly-broker.exe'
+    if (Test-Path -LiteralPath $broker) {
+      throw 'Developer named-pipe broker was unexpectedly shipped in the per-user installer'
+    }
     Write-Host 'PASS: installed agent has no additional safety-probe executable or elevated broker.'
   } else {
     if (-not (Test-Path -LiteralPath $probe)) { throw 'Read-only safety probe binary was not built' }

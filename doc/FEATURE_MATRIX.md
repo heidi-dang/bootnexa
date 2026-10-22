@@ -17,6 +17,7 @@ This file is the public record for supported, planned and explicitly unsupported
 | Images | Expected checksum and image/USB byte-capacity preflight | 0.3 | Development | Wrong checksum, unsupported images, insufficient and read-only target tests |
 | Imaging | File-backed virtual raw byte stream with full SHA-256 read-back | 0.3 | Development | Small/multi-chunk images, corrupted target and fault-injected byte I/O |
 | Activity | Opt-in read-only simulated job list | 0.3 | Development | Authenticated history, disabled feed and no write routes |
+| IPC | Developer-only Windows one-shot named pipe with OS token identity, read-only report | 0.3 | Development | Windows live accept/reject, nonce/version negative cases, installer exclusion |
 | Safety | Protected-volume ancestry propagation and test-only authenticated helper protocol | 0.3 | Development | Multi-disk parent propagation, incomplete role denial, replay/tamper/expiry negative cases |
 | Safety | Standalone read-only Windows device identity/topology probe (no elevation) | 0.3 | Development | Windows Storage/CIM live smoke, duplicate/mutated identity fixtures, fail-closed policy |
 | Operations | SQLite simulation journal, idempotency, recovery, cancellation, cursor events/SSE | 0.3 | Development | Concurrency, failure injection, restart, subprocess and read-only HTTP acceptance |

@@ -37,3 +37,7 @@ The [read-only Windows safety probe](WINDOWS-SAFETY-PROBE.md) independently coll
 ## Protected-volume risk propagation (advisory only)
 
 [The protected-volume graph](PROTECTED-ANCESTRY-HELPER-CONTRACT.md) now propagates observed boot/system/partition protected roles through shared volume-extent parent disks, while failing closed when role/extent evidence is incomplete. The verified-peer helper protocol is a Rust **test-only specification**, not an OS-authenticated privileged service. Real hardware and code-signing release gates remain open.
+
+## Developer-only one-shot read-only Windows pipe
+
+The Windows safety diagnostics now have an [experimental local named-pipe boundary](WINDOWS-READONLY-PIPE.md) using process/token SID verification and an ephemeral challenge. This is not a privileged writer, signed client identity, hardened service or destructively authorized plan. All physical USB write gates remain open.

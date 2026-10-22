@@ -40,6 +40,10 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: ./tests/windows/smoke.ps1
+      - name: Windows authenticated read-only named-pipe broker acceptance
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: ./tests/windows/pipe-smoke.ps1
       - name: Install pinned Inno Setup compiler
         if: matrix.os == 'windows-latest'
         shell: pwsh

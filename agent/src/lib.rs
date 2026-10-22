@@ -17,3 +17,6 @@ mod native_ancestry_tests;
 pub mod protected_ancestry;
 #[cfg(test)]
 mod protected_ancestry_tests;
+
+#[cfg(windows)]
+pub mod safety_report;
