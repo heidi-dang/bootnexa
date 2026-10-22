@@ -16,8 +16,8 @@ mod windows {
     const TOKEN_QUERY: u32 = 0x0008;
     const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
     const PIPE_ACCESS_DUPLEX: u32 = 3;
-    const PIPE_TYPE_MESSAGE: u32 = 4;
-    const PIPE_READMODE_MESSAGE: u32 = 2;
+    // Use strict length-prefixed BYTE stream semantics, never assume one
+    // ReadFile corresponds to exactly one WriteFile or an OS message.
     const PIPE_REJECT_REMOTE_CLIENTS: u32 = 8;
     const FILE_FLAG_FIRST_PIPE_INSTANCE: u32 = 0x00080000;
     const GENERIC_READ: u32 = 0x80000000;
@@ -96,12 +96,6 @@ mod windows {
             flags: u32,
             template: Handle,
         ) -> Handle;
-        fn SetNamedPipeHandleState(
-            pipe: Handle,
-            mode: *const u32,
-            max_collection: *const u32,
-            collect_timeout: *const u32,
-        ) -> i32;
         fn ReadFile(
             file: Handle,
             buffer: *mut c_void,
@@ -273,44 +267,32 @@ mod windows {
         }
         Ok(())
     }
+    /// Strictly bounded read-exact on Windows BYTE-mode pipes. Win32
+    /// ReadFile can return any positive prefix of the requested bytes.
     fn read_fixed(pipe: Handle, output: &mut [u8]) -> io::Result<()> {
-        let mut read = 0;
-        let ok = unsafe {
-            ReadFile(
-                pipe,
-                output.as_mut_ptr().cast(),
-                output.len() as u32,
-                &mut read,
-                null_mut(),
-            )
-        };
-        if ok == 0 || read as usize != output.len() {
-            return Err(io::Error::other("invalid pipe frame"));
-        }
-        Ok(())
-    }
-    /// Read a length-prefixed report using bounded messages. In Windows
-    /// message-read mode each ReadFile may legally yield fewer bytes than
-    /// requested when the next message is shorter. Never assume a 4096-byte
-    /// sender write aligns with a single consumer read boundary.
-    fn read_report_payload(pipe: Handle, output: &mut [u8]) -> io::Result<()> {
         let mut position = 0usize;
         while position < output.len() {
             let desired = (output.len() - position).min(4096);
-            let mut n = 0u32;
+            let mut received = 0u32;
             let ok = unsafe {
                 ReadFile(
                     pipe,
                     output[position..position + desired].as_mut_ptr().cast(),
                     desired as u32,
-                    &mut n,
+                    &mut received,
                     null_mut(),
                 )
             };
-            if ok == 0 || n == 0 || n as usize > desired {
-                return Err(io::Error::other("incomplete bounded report stream"));
+            if ok == 0 || received == 0 || received as usize > desired {
+                return Err(io::Error::other(format!(
+                    "pipe frame incomplete at {} of {} bytes; received={}, win32={}",
+                    position,
+                    output.len(),
+                    received,
+                    unsafe { GetLastError() }
+                )));
             }
-            position += n as usize;
+            position += received as usize;
         }
         Ok(())
     }
@@ -359,7 +341,7 @@ mod windows {
             CreateNamedPipeW(
                 wide.as_ptr(),
                 PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
-                PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_REJECT_REMOTE_CLIENTS,
+                PIPE_REJECT_REMOTE_CLIENTS,
                 1,
                 8192,
                 8192,
@@ -420,12 +402,6 @@ mod windows {
                 null_mut(),
             )
         })?;
-        // CreateFile defaults the client to byte-read mode, even when the
-        // server's pipe TYPE is message. Enforce one exact frame per message.
-        let read_mode = PIPE_READMODE_MESSAGE;
-        if unsafe { SetNamedPipeHandleState(pipe.0, &read_mode, null(), null()) } == 0 {
-            return Err(io::Error::last_os_error());
-        }
         let mut hello = [0u8; 20];
         read_fixed(pipe.0, &mut hello)
             .map_err(|_| io::Error::other("invalid protocol hello message"))?;
@@ -452,7 +428,7 @@ mod windows {
         }
         let mut data = vec![0u8; len];
         // Message-mode pipes need one read per message, not partial ReadFile.
-        read_report_payload(pipe.0, &mut data)?;
+        read_fixed(pipe.0, &mut data)?;
         let value: serde_json::Value = serde_json::from_slice(&data).map_err(io::Error::other)?;
         if value["physicalWriteAuthorized"] != false
             || value["protectedAncestry"]["physicalWriteAuthorized"] != false
