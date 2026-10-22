@@ -71,6 +71,7 @@ mod windows {
         fn GetCurrentProcessId() -> u32;
         fn OpenProcess(access: u32, inherit: i32, pid: u32) -> Handle;
         fn CloseHandle(h: Handle) -> i32;
+        fn FlushFileBuffers(handle: Handle) -> i32;
         fn GetLastError() -> u32;
         fn LocalFree(ptr: *mut c_void) -> *mut c_void;
         fn CreateNamedPipeW(
@@ -378,6 +379,12 @@ mod windows {
             let length = (body.len() as u32).to_le_bytes();
             write_all(pipe.0, &length)?;
             write_all(pipe.0, &body)?;
+            // Win32 DisconnectNamedPipe discards any unread pipe data.
+            // Flush the PIPE output (not a disk) before disconnecting so
+            // the authenticated client can drain the entire report.
+            if unsafe { FlushFileBuffers(pipe.0) } == 0 {
+                return Err(io::Error::last_os_error());
+            }
             Ok(())
         }
         .await;

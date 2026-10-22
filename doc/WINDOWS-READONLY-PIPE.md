@@ -15,3 +15,8 @@ This is a **development safety experiment**, not a production-ready Windows serv
 Windows CI executes `tests/windows/pipe-smoke.ps1` against the real release-built binary. It verifies a legitimate local read-only report and rejection of unsupported operation, altered challenge, invalid version, arbitrary pipe namespace and a disk-writing command. The existing test installer must **exclude** both the developer safety probe and read-only IPC binary. The Windows agent still exposes no destructive route, no write-capable physical disk handle, no elevation or formatting operation.
 
 **Release blockers remain open:** [physical USB safety #13](https://github.com/heidi-dang/bootnexa/issues/13) and [trusted production code signing #5](https://github.com/heidi-dang/bootnexa/issues/5). A pipe authorization does not constitute destructive device consent or physical media qualification.
+
+
+## Pipe lifecycle detail
+
+After writing the length-prefixed report, the broker calls Win32 FlushFileBuffers **on the named pipe** to ensure the client has drained its response before DisconnectNamedPipe destroys buffered data. This is local IPC synchronization; it is NOT a USB storage flush, disk write, or a relaxation of Windows process/token authentication.
