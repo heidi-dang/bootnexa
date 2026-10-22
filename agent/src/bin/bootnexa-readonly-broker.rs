@@ -289,6 +289,31 @@ mod windows {
         }
         Ok(())
     }
+    /// Read a length-prefixed report using bounded messages. In Windows
+    /// message-read mode each ReadFile may legally yield fewer bytes than
+    /// requested when the next message is shorter. Never assume a 4096-byte
+    /// sender write aligns with a single consumer read boundary.
+    fn read_report_payload(pipe: Handle, output: &mut [u8]) -> io::Result<()> {
+        let mut position = 0usize;
+        while position < output.len() {
+            let desired = (output.len() - position).min(4096);
+            let mut n = 0u32;
+            let ok = unsafe {
+                ReadFile(
+                    pipe,
+                    output[position..position + desired].as_mut_ptr().cast(),
+                    desired as u32,
+                    &mut n,
+                    null_mut(),
+                )
+            };
+            if ok == 0 || n == 0 || n as usize > desired {
+                return Err(io::Error::other("incomplete bounded report stream"));
+            }
+            position += n as usize;
+        }
+        Ok(())
+    }
     fn write_all(pipe: Handle, bytes: &[u8]) -> io::Result<()> {
         for part in bytes.chunks(4096) {
             let mut written = 0;
@@ -427,10 +452,7 @@ mod windows {
         }
         let mut data = vec![0u8; len];
         // Message-mode pipes need one read per message, not partial ReadFile.
-        for segment in data.chunks_mut(4096) {
-            read_fixed(pipe.0, segment)
-                .map_err(|_| io::Error::other("invalid report chunk message"))?;
-        }
+        read_report_payload(pipe.0, &mut data)?;
         let value: serde_json::Value = serde_json::from_slice(&data).map_err(io::Error::other)?;
         if value["physicalWriteAuthorized"] != false
             || value["protectedAncestry"]["physicalWriteAuthorized"] != false
