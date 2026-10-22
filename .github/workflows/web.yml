@@ -16,6 +16,7 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - run: python3 tests/virtual-media/verify-linux-profile.py
       - run: npm run typecheck
       - run: npm run build
       - run: npx playwright install --with-deps chromium

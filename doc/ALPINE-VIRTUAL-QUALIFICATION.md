@@ -24,3 +24,7 @@ A dedicated GitHub CI job downloads the exact official image, verifies the pinne
 All library and CLI JSON fields for physical disk authority remain `false`. The per-image report also keeps `linuxDistributionBootVerified` and `bootExecutionVerified` false because **structural validation alone cannot assert those outcomes**; only independent CI evidence can qualify the full workflow.
 
 This does not support arbitrary Alpine versions, arbitrary hybrid ISOs, UDF/Rock Ridge extraction, Windows Setup, BIOS or Secure Boot compatibility, vendor bootloader signing, physical USB writing or publicly trusted application signing. Hardware safety issue #13 and production signing issue #5 remain open.
+
+## Browser read-only identification
+
+The local ISO library recognises this exact release only after its own streamed SHA-256 and byte length both match the Rust and CI allowlist. It displays the QEMU/OVMF boot-to-login qualification as an exact-image result, not a claim of general Linux ISO or physical USB compatibility. The browser performs no disk writing, local agent mutation, downloading or installer execution. Cross-language digest, version and size consistency are checked in CI.
