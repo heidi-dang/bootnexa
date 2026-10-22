@@ -455,7 +455,7 @@ mod windows {
             }
         };
         if let Err(e) = result {
-            eprintln!("read-only pipe refused request: {}", e.kind());
+            eprintln!("read-only pipe refused request: {e}");
             std::process::exit(1);
         }
     }

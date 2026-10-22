@@ -23,7 +23,11 @@ function Run-Case([string]$Mode,[bool]$ExpectSuccess) {
     $output= & $broker $Mode $pipe 2>&1
     $exit=$LASTEXITCODE
     if ($ExpectSuccess) {
-      if ($exit -ne 0){throw "Authenticated read-only request failed: $output"}
+      if ($exit -ne 0){
+        $process.WaitForExit(5000) | Out-Null
+        $serverError=Get-Content -LiteralPath $err -Raw -ErrorAction SilentlyContinue
+        throw "Authenticated read-only request failed: client=$output broker=$serverError"
+      }
       $value=($output | Out-String) | ConvertFrom-Json
       if (-not $value.readOnly -or $value.physicalWriteAuthorized -or
           -not $value.authenticatedWindowsPeer -or
