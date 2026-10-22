@@ -397,8 +397,8 @@ mod windows {
         })?;
         // CreateFile defaults the client to byte-read mode, even when the
         // server's pipe TYPE is message. Enforce one exact frame per message.
-        let mode = PIPE_READMODE_MESSAGE;
-        if unsafe { SetNamedPipeHandleState(pipe.0, &mode, null(), null()) } == 0 {
+        let read_mode = PIPE_READMODE_MESSAGE;
+        if unsafe { SetNamedPipeHandleState(pipe.0, &read_mode, null(), null()) } == 0 {
             return Err(io::Error::last_os_error());
         }
         let mut hello = [0u8; 20];
