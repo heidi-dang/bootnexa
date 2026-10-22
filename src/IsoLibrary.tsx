@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Disc3, FileUp, Info, ShieldCheck } from 'lucide-react';
 import { inspectIsoBoot, type IsoBootEvidence } from './iso-boot-evidence';
+import { inspectVirtualIsoPlan, type VirtualIsoPlan } from './iso-virtual-plan';
 import { useImageAnalysis } from './use-image-analysis';
 function sizeLabel(bytes: number) {
   return bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + ' MiB' : bytes + ' bytes';
@@ -9,15 +10,22 @@ export function IsoLibrary() {
   const [file, setFile] = useState<File | null>(null);
   const [evidence, setEvidence] = useState<IsoBootEvidence | null>(null);
   const [error, setError] = useState('');
+  const [virtualPlan, setVirtualPlan] = useState<VirtualIsoPlan | null>(null);
+  const [virtualPlanError, setVirtualPlanError] = useState('');
   const { analysis, retry, cancel } = useImageAnalysis(file);
   useEffect(() => {
     setEvidence(null);
     setError('');
+    setVirtualPlan(null);
+    setVirtualPlanError('');
     if (!file) return;
     let active = true;
     inspectIsoBoot(file)
       .then(value => { if (active) setEvidence(value); })
       .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : 'ISO metadata could not be validated.'); });
+    inspectVirtualIsoPlan(file)
+      .then(value => { if (active) setVirtualPlan(value); })
+      .catch(reason => { if (active) setVirtualPlanError(reason instanceof Error ? reason.message : 'ISO directory layout not supported.'); });
     return () => { active = false; };
   }, [file]);
   const details = analysis.status === 'complete' ? analysis.result : null;
@@ -63,6 +71,25 @@ export function IsoLibrary() {
             <div><span>Physical writing authorised</span><strong>No</strong></div>
           </div>
           {evidence && <p className="notice" role="status"><Info size={16}/>{evidence.warning}</p>}
+        </section>
+        <section className="panel" aria-label="Virtual media compatibility plan" data-testid="iso-virtual-plan">
+          <div className="section-title"><span className="number">03</span><div><h2>Virtual media compatibility</h2>
+            <p>Bounded read-only directory traversal; preparation is not a supported disk-writing operation.</p></div></div>
+          <div className="summary-data">
+            <div><span>Detected media profile</span><strong data-testid="iso-profile">{virtualPlan?.profile ?? 'Not qualified'}</strong></div>
+            <div><span>Virtual EFI conversion</span><strong data-testid="iso-virtual-eligible">{virtualPlan?.virtualEfiEligible ? 'Developer-only candidate' : 'Disabled / unsupported'}</strong></div>
+            <div><span>Files inspected</span><strong>{virtualPlan?.fileCount ?? '—'}</strong></div>
+            <div><span>Recognised file bytes</span><strong>{virtualPlan ? sizeLabel(virtualPlan.totalBytes) : '—'}</strong></div>
+            <div><span>Windows / Linux installer boot</span><strong>Not verified</strong></div>
+            <div><span>Physical USB write authorisation</span><strong>No</strong></div>
+          </div>
+          {virtualPlan && <p className="notice" role="status">{virtualPlan.reason}</p>}
+          {virtualPlanError && <p className="helper" data-testid="iso-plan-error">Unsupported or invalid directory structure: {virtualPlanError}</p>}
+          {virtualPlan && virtualPlan.samplePaths.length>0 && <div className="hash-row">
+            <strong>Recognised files (first {virtualPlan.samplePaths.length})</strong>
+            <ul data-testid="iso-files">{virtualPlan.samplePaths.map(path=><li key={path}><code>{path}</code></li>)}</ul>
+          </div>}
+          <p className="helper">Production Windows/Linux ISO conversion, installer boot, WIM splitting and physical USB creation remain disabled. Qualified virtual copying is available only in the developer CLI.</p>
         </section>
       </div>
       <div className="work-side">
