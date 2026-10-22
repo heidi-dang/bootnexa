@@ -53,3 +53,7 @@ The [virtual-only partition/EFI engine](VIRTUAL-BOOT-ENGINE.md) can produce an a
 ## Bounded ISO-to-virtual EFI qualification (not physical media)
 
 The virtual-only [ISO9660 conversion prototype](ISO-TO-VIRTUAL-PIPELINE.md) checks file extents, stream hashes, FAT32 content and synthetic QEMU EFI boot. These checks do not authorize or implement any physical device opening, erasing or USB write. Real hardware safety requirements remain open.
+
+## Strict dual-format ISO virtual-copy proof
+
+The [hybrid ISO virtual proof](HYBRID-ISO-VIRTUAL-PROOF.md) copies only to an anonymous regular file and then a uniquely generated regular-file image. Its validation is not physical-device authority and does not qualify arbitrary Linux ISOs or Windows installers. Real USB writes remain disabled until separate explicit hardware, privilege and signing gates.

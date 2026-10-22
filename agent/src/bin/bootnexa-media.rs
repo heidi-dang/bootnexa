@@ -1,6 +1,7 @@
 //! Developer-only safe, virtual media CLI; never accepts a target disk,
 //! existing output file, partition handle, or USB device path.
 use bootnexa_agent::{
+    hybrid_iso::VirtualHybrid,
     iso_inspect::inspect,
     iso_tree::{classify, enumerate},
     partition_layout::Scheme,
@@ -24,6 +25,36 @@ fn run() -> Result<(), Box<dyn Error>> {
             if !meta.is_file(){return Err("ISO input must be a regular file".into());}
             let report=inspect(&mut file,meta.len())?;
             println!("{}",serde_json::to_string(&report)?);
+        }
+        [op, source, output_dir] if op == "build-hybrid-virtual" => {
+            // An experimental dual-format GPT/ISO image, not a generalized
+            // Linux installer ISO and NEVER a physical-device target.
+            let mut input=File::open(source)?;
+            if !input.metadata()?.is_file(){
+                return Err("hybrid input must be a regular file".into());
+            }
+            let mut hybrid=VirtualHybrid::from_iso_file(&mut input)?;
+            let dir=PathBuf::from(output_dir);
+            if !fs::symlink_metadata(&dir)?.file_type().is_dir(){
+                return Err("virtual output parent must be an existing real directory".into());
+            }
+            let dir=fs::canonicalize(dir)?;
+            let destination=dir.join(format!("bootnexa-hybrid-virtual-{}.img",Uuid::new_v4().simple()));
+            let mut output=OpenOptions::new().read(true).write(true).create_new(true).open(&destination)?;
+            if !output.metadata()?.is_file(){return Err("virtual output must be a regular file".into());}
+            // On failed copying, remove this *new* file rather than leave a
+            // potentially partial image as a usable-looking output.
+            let digest=match hybrid.export_to_regular_file(&mut output) {
+                Ok(digest)=>digest,
+                Err(e)=>{
+                    drop(output);
+                    let _=fs::remove_file(&destination);
+                    return Err(e.into());
+                }
+            };
+            println!("{}",json!({"outputPath":destination.to_string_lossy(),
+                "outputSha256":digest,"media":hybrid.report(),
+                "virtualOnly":true,"physicalWriteAuthorized":false}));
         }
         [op, source] if op == "plan-iso" => {
             let mut input=File::open(source)?;
@@ -94,7 +125,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 "outputSha256":digest,"media":report
             }));
         }
-        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | plan-iso <ISO> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
+        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | plan-iso <ISO> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
     }
     Ok(())
 }

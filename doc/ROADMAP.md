@@ -166,6 +166,9 @@ Treat a layout plan as untrusted until recomputed and signed by the local agent;
 
 ## Phase 7 — ISO classification and UEFI/BIOS paths
 
+**Restricted raw-hybrid virtual proof:** A developer-only ISO9660+GPT/FAT32 sector-copy qualification requires CRC-correct GPT, an El Torito EFI catalog, and identical EFI application bytes in the ISO9660 tree and FAT32 ESP; verified whole-image read-back and a QEMU/OVMF boot check are in the new CI gate. This is a *synthetic dual-format fixture only*, not Linux distribution support. See [scope/limitations](HYBRID-ISO-VIRTUAL-PROOF.md).
+
+
 **Limited ISO-to-virtual progress:** The developer CLI now traverses strictly bounded plain ISO9660 directory trees, refuses unsafe/malformed extents and names, and streams verified small x64 EFI payloads into anonymous FAT32 virtual disks with SHA-256 read-back. The QEMU/OVMF CI gate additionally attempts actual boot of an ISO-derived synthetic EFI fixture. Windows/Linux installation candidate layouts are classified **but blocked**, not converted or boot-qualified. See [pipeline limitations](ISO-TO-VIRTUAL-PIPELINE.md).
 
 
