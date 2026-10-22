@@ -197,6 +197,9 @@ Treat a layout plan as untrusted until recomputed and signed by the local agent;
 
 ## Phase 9 — Linux media and persistence
 
+**One pinned Linux candidate in verification:** The official Alpine virt 3.24.2 x86_64 ISO has a byte-for-byte pinned SHA-256 preflight and a separately validated FAT EFI partition bootloader. The developer CLI can copy it exclusively to an anonymous-backed virtual disk; a dedicated QEMU/OVMF job must boot to an actual Linux serial login before claiming success. This is not general Linux media support, Linux persistence, or any physical USB writer. See [Alpine qualification](ALPINE-VIRTUAL-QUALIFICATION.md).
+
+
 **Work:** Support hybrid ISOs, distribution-specific extraction, GRUB/Syslinux configurations, persistence partitions/files and boot-time kernel parameter modification where the target distribution supports it. Linux persistence must be gated by a distro + release compatibility registry rather than a universal toggle.
 
 **Matrix:** Ubuntu LTS, Debian stable, Fedora current, plus known unsupported distributions. Add architecture/UEFI/Secure Boot differences per image. Incorporate signed bootloaders only under compatible licensing and verified supply chains.

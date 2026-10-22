@@ -57,3 +57,7 @@ The virtual-only [ISO9660 conversion prototype](ISO-TO-VIRTUAL-PIPELINE.md) chec
 ## Strict dual-format ISO virtual-copy proof
 
 The [hybrid ISO virtual proof](HYBRID-ISO-VIRTUAL-PROOF.md) copies only to an anonymous regular file and then a uniquely generated regular-file image. Its validation is not physical-device authority and does not qualify arbitrary Linux ISOs or Windows installers. Real USB writes remain disabled until separate explicit hardware, privilege and signing gates.
+
+## One pinned Alpine virtual ISO profile
+
+The exact-version, hash-pinned [Alpine virtual-file workflow](ALPINE-VIRTUAL-QUALIFICATION.md) validates a real vendor ISO and copies it to a newly created regular file only. This does not establish native Windows privileged-write authority, an authenticated target disk, or real USB boot. Hardware and signing release gates remain unchanged.
