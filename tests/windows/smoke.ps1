@@ -67,6 +67,28 @@ try {
         throw 'Windows safety probe must retain native IOCTL volume-extent release gate'
       }
     }
+    # Native SetupAPI + IOCTL topology evidence, regardless of completeness.
+    $native = $safety.nativeAncestry
+    if (-not $native -or -not $native.readOnly -or $native.physicalWriteAuthorized) {
+      throw 'Native device ancestry collector did not fail closed'
+    }
+    if ($native.diskInterfaces -lt 0 -or $native.diskInterfaces -gt 128 -or
+        $native.scannedVolumes -lt 0 -or $native.scannedVolumes -gt 1024 -or
+        $native.mappedExtents -lt 0 -or $native.mappedExtents -gt 16384) {
+      throw 'Native ancestry counters outside bounded limits'
+    }
+    if ($native.nativeAncestryComplete -and (
+        -not $native.twoSnapshotsAgree -or @($native.riskCodes).Count -gt 0)) {
+      throw 'An incomplete or drifting native map falsely marked complete'
+    }
+    if (-not $native.nativeAncestryComplete) {
+      foreach ($finding in @($safety.findings)) {
+        if ($finding.identityStableBetweenSamples) {
+          throw 'Unverified native ancestry reported stable device identity'
+        }
+      }
+    }
+    Write-Host "PASS: native read-only SetupAPI/IOCTL ancestry ($($native.diskInterfaces) interfaces, $($native.scannedVolumes) volumes, $($native.mappedExtents) extents), no write authority."
     Write-Host "PASS: separate read-only Windows safety probe verified $(@($safety.findings).Count) disk finding(s), no write authority."
   }
   Assert-Status '/v1/safety/probe' 404 GET $expectedOrigin

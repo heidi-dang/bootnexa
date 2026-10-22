@@ -54,3 +54,13 @@ Proposed future IPC message classes: `GetReadOnlySafetyReport`, `PreparePlan`, `
 **Limitations:** Windows CI runs without sacrificial USB drives. It cannot prove real USB ancestry, protected role coverage, safe raw-disk locking or physical write/read-back. Live provider availability is a test of read-only enumeration only. No public certificate has been obtained (see [issue #5](https://github.com/heidi-dang/bootnexa/issues/5)). Hardware and destructive safety gates are tracked by [issue #13](https://github.com/heidi-dang/bootnexa/issues/13).
 
 **Hard guarantee for this milestone:** No code changes to BootNexa's real-disk writer permissions, no privileged process, and no physical media mutations.
+
+## Native SetupAPI + Storage IOCTL evidence
+
+A separate Windows-only Rust module at agent/src/native_ancestry.rs now collects a second independent form of **read-only** topology evidence. It calls SetupDiGetClassDevsW and SetupDiEnumDeviceInterfaces for GUID_DEVINTERFACE_DISK, obtains interface paths using SetupDiGetDeviceInterfaceDetailW, and resolves session-only disk numbers via IOCTL_STORAGE_GET_DEVICE_NUMBER. It independently enumerates volumes with FindFirstVolumeW/FindNextVolumeW and requests IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS.
+
+**All CreateFileW handles specify zero desired access**, shared access and OPEN_EXISTING. Only two hard-coded read-only IOCTL codes are used. The probe has no caller-supplied path, target index, destructive control code or privilege change. It closes handles and SetupAPI sets.
+
+Native reads are bounded to 128 disk interfaces, 1,024 volumes and 256 extents per volume. Output includes only aggregate counts, fixed risk codes and physicalWriteAuthorized=false, never native device paths, volume GUIDs, handles or serial numbers. Independent snapshots are compared; topology drift, duplicate/missing device numbers, unmapped parent disks, incomplete IOCTL queries, and cross-disk volumes remain risks. If native evidence is incomplete, existing safety findings are explicitly marked unstable.
+
+A nativeAncestryComplete=true result certifies **only the read-only observed graph**; it does NOT attest all boot/system/pagefile/crashdump/hibernation roles, safe volume lock/dismount or authorize disk mutation. Native evidence is still advisory, and ProtectedRoleEvidenceComplete=false remains a hard denial. The elevated helper and sacrificial USB hardware tests remain unimplemented.
