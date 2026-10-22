@@ -250,3 +250,7 @@ A pure regular-file GPT/MBR + FAT32 builder can create a 96 MiB virtual EFI boot
 ### Experimental ISO-to-virtual EFI media
 
 Read-only ISO planning and small ISO9660 x64 EFI extraction to a GPT/FAT32 **regular-file virtual image** are available from the developer-only CLI. Windows/Linux installer profiles are intentionally rejected pending OS-specific support. There is no physical USB write handler or signed public release. See [ISO-to-virtual limitations and verification](doc/ISO-TO-VIRTUAL-PIPELINE.md).
+
+### Dual-format hybrid ISO virtual copy (experimental)
+
+The developer-only `build-hybrid-virtual` command performs sector-perfect anonymous-file copying for a strictly constrained ISO9660 + BootNexa-layout GPT/FAT32 dual-format fixture. Whole-file SHA-256, GPT CRC, matched ISO/ESP EFI payload and QEMU/OVMF synthetic boot checks are required. This does **not** support arbitrary Linux ISO installation media or physical USB writes. Details: [hybrid ISO virtual proof](doc/HYBRID-ISO-VIRTUAL-PROOF.md).

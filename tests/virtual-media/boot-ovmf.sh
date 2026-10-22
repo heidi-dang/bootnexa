@@ -107,3 +107,6 @@ if ! grep -aFq 'BOOTNEXA_UEFI_BOOT_OK' "$tmp/iso-uefi-debug.log";then
   exit 1
 fi
 echo "PASS: real ISO9660 traversal, two-file FAT32 copy/read-back, and UEFI boot in QEMU/OVMF."
+
+# Separate strict dual-format ISO/GPT virtual-image boot gate.
+bash tests/virtual-media/hybrid-ovmf.sh "$tmp" "$code" "$vars"

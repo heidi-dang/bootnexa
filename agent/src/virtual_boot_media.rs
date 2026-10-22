@@ -24,6 +24,34 @@ pub struct IsoCopyReport {
     pub verified_files: usize,
     pub verified_bytes: u64,
 }
+pub(crate) fn read_efi_payload(file: &mut File, layout: &Layout) -> Result<Vec<u8>, MediaError> {
+    let view = PartitionView::new(file, layout);
+    let fs = FileSystem::new(view, FsOptions::new())?;
+    if fs.fat_type() != FatType::Fat32 {
+        return Err(MediaError::Corrupt);
+    }
+    let root = fs.root_dir();
+    let file = root.open_file("EFI/BOOT/BOOTX64.EFI")?;
+    let mut output = vec![];
+    file.take(MAX_PAYLOAD as u64 + 1).read_to_end(&mut output)?;
+    if output.len() > MAX_PAYLOAD {
+        return Err(MediaError::Corrupt);
+    }
+    if output.len() < 0x100 || &output[..2] != b"MZ" {
+        return Err(MediaError::Corrupt);
+    }
+    let pe_offset = u32::from_le_bytes(output[0x3c..0x40].try_into().unwrap()) as usize;
+    if pe_offset.checked_add(0x60).is_none_or(|n| n > output.len())
+        || &output[pe_offset..pe_offset + 4] != b"PE\0\0"
+        || output[pe_offset + 4..pe_offset + 6] != [0x64, 0x86]
+        || output[pe_offset + 24..pe_offset + 26] != [0x0b, 0x02]
+        || output[pe_offset + 24 + 68..pe_offset + 24 + 70] != [10, 0]
+    {
+        return Err(MediaError::Corrupt);
+    }
+    Ok(output)
+}
+
 const MAX_PAYLOAD: usize = 8 * 1024 * 1024;
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -189,19 +217,7 @@ impl VirtualBootMedia {
         })
     }
     pub fn read_efi_application(&mut self) -> Result<Vec<u8>, MediaError> {
-        let view = PartitionView::new(&mut self.file, &self.layout);
-        let fs = FileSystem::new(view, FsOptions::new())?;
-        if fs.fat_type() != FatType::Fat32 {
-            return Err(MediaError::Corrupt);
-        }
-        let root = fs.root_dir();
-        let file = root.open_file("EFI/BOOT/BOOTX64.EFI")?;
-        let mut output = vec![];
-        file.take(MAX_PAYLOAD as u64 + 1).read_to_end(&mut output)?;
-        if output.len() > MAX_PAYLOAD {
-            return Err(MediaError::Corrupt);
-        }
-        Ok(output)
+        read_efi_payload(&mut self.file, &self.layout)
     }
     pub fn verify(&mut self) -> Result<(), MediaError> {
         verify_partition_table(&mut self.file, &self.layout)?;
