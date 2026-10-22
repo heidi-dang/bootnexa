@@ -143,6 +143,9 @@ No disk access from a browser alone; file handles selected in the browser are no
 
 ## Phase 6 — Partition layout and filesystem creation
 
+**Virtual-only progress:** A bounded anonymous regular-file engine now writes/revalidates GPT primary + backup headers, both entry arrays and CRC-32, and MBR EFI layouts. FAT32 partition formatting, fixed EFI/BOOT/BOOTX64.EFI writes and full EFI payload SHA-256 read-back are implemented. The virtual boot qualification test uses QEMU/OVMF in Linux CI. These steps do **not** satisfy real Windows mounting, BIOS boot or physical USB acceptance. See [v0.4 evidence](VIRTUAL-BOOT-ENGINE.md).
+
+
 **Work:** Implement or integrate MBR and GPT partition table operations, protective MBR, GPT backup header and CRC validation, alignment, and partitions required for BIOS/UEFI. Introduce a layout planner that emits a reviewable operation plan **before** execution. Add FAT16/FAT32, NTFS, exFAT, and any additional filesystems only with verified OS tool/driver licensing and interoperability.
 
 **Disk plan example**
@@ -162,6 +165,9 @@ Treat a layout plan as untrusted until recomputed and signed by the local agent;
 **Exit gate:** Test partitions are mountable on target Windows and firmware; corruption and out-of-range layouts are rejected before writes.
 
 ## Phase 7 — ISO classification and UEFI/BIOS paths
+
+**Initial inspection progress:** A bounded, read-only ISO9660 descriptor / UDF recognition / El Torito catalog parser reports BIOS/UEFI boot entry signals and detects hybrid-MBR *candidates*, not supported Linux/Windows payload extraction. This is not complete ISO compatibility or boot support. See [v0.4 evidence](VIRTUAL-BOOT-ENGINE.md).
+
 
 **Work:** Inspect ISO9660/UDF metadata; enumerate boot catalog entries, EFI payloads, partition images, Windows install media, Linux bootloader layouts and architecture. Differentiate hybrid ISO raw-write from extraction/copy workflows.
 

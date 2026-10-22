@@ -45,3 +45,7 @@ The Windows safety diagnostics now have an [experimental local named-pipe bounda
 ## Bounded read-only IPC and real Windows caller negative tests
 
 A developer-only broker one-shot watchdog now bounds blocking Windows pipe operations and a separate Windows CI suite tests denied different-user and low-integrity impersonation tokens, plus stalled/partial requests. This does **not** replace a separately reviewed elevated helper, signed-client identity, kernel-enforced per-I/O cancellation or physical-device qualification.
+
+## File-backed bootable media engine v0.4
+
+The [virtual-only partition/EFI engine](VIRTUAL-BOOT-ENGINE.md) can produce an anonymous GPT/MBR+FAT32 image, validate both GPT copies and reopen/read back an EFI payload. Neither it nor ISO inspection qualifies physical-media target consent, authoritative protected-role ancestry, exclusive locks or device flush semantics. Physical writing is still disabled.
