@@ -36,11 +36,12 @@ done
 if [[ -z "$code" || -z "$vars" ]]; then echo "OVMF firmware is absent"; exit 1;fi
 cp "$vars" "$tmp/VARS.fd"
 status=0
+# snapshot=on creates a temporary COW layer, so the base image is never mutated.
 timeout 55s qemu-system-x86_64 \
   -machine q35 -accel tcg -m 256 \
   -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code" \
   -drive "if=pflash,format=raw,unit=1,file=$tmp/VARS.fd" \
-  -drive "id=media,if=none,format=raw,readonly=on,file=$image" \
+  -drive "id=media,if=none,format=raw,snapshot=on,file=$image" \
   -device ich9-ahci,id=ahci \
   -device ide-hd,drive=media,bus=ahci.0 \
   -debugcon "file:$tmp/uefi-debug.log" -global isa-debugcon.iobase=0xe9 \
