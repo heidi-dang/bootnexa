@@ -2,8 +2,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 tmp="$(mktemp -d)"
+alpine_version="${1:-3.24.2}"
+case "$alpine_version" in
+  3.24.2) digest="3ab424762af704b2c2a9e57df1dc37f982af260071504d977f2fb96822e7130b" ;;
+  3.24.1) digest="e73a6241bd5f3c5c2d4d38c02cc52c378c0415a7c888bd292066bf36e0f41a39" ;;
+  *) echo "Unsupported non-pinned Alpine ISO: $alpine_version" >&2; exit 1 ;;
+esac
 # Retain bounded CI-only emulator evidence outside the disposable image folder.
-evidence_dir="${BOOTNEXA_EVIDENCE_DIR:-test-results/alpine-virtual-boot}"
+evidence_dir="${BOOTNEXA_EVIDENCE_DIR:-test-results/alpine-virtual-boot/$alpine_version}"
 mkdir -p "$evidence_dir"
 if [[ -L "$evidence_dir" ]]; then echo "Refusing symlink evidence directory"; exit 1; fi
 if [[ -e "$evidence_dir/alpine-boot-evidence.json" || -L "$evidence_dir/alpine-boot-evidence.json" ]]; then
@@ -24,21 +30,20 @@ cleanup() {
   rm -rf "$tmp"
 }
 trap cleanup EXIT
-alpine="alpine-virt-3.24.2-x86_64.iso"
+alpine="alpine-virt-${alpine_version}-x86_64.iso"
 url="https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/x86_64/$alpine"
-digest="3ab424762af704b2c2a9e57df1dc37f982af260071504d977f2fb96822e7130b"
 curl -fLsS --retry 3 --connect-timeout 15 --max-time 240 "$url" -o "$tmp/$alpine"
 echo "$digest  $tmp/$alpine" | sha256sum -c -
 cargo build --manifest-path agent/Cargo.toml --locked --release --bin bootnexa-media
 agent/target/release/bootnexa-media build-alpine-virtual "$tmp/$alpine" "$tmp" > "$tmp/report.json"
-python3 - "$tmp" "$digest" <<'PY'
+python3 - "$tmp" "$digest" "$alpine_version" <<'PY'
 import hashlib,json,pathlib,sys
 d=pathlib.Path(sys.argv[1])
 expected=sys.argv[2]
 r=json.loads((d/"report.json").read_text())
 assert r["virtualOnly"] and not r["physicalWriteAuthorized"]
 m=r["media"]
-assert m["distroProfile"]=="alpine-virt-3.24.2-x86_64"
+assert m["distroProfile"]==f"alpine-virt-{sys.argv[3]}-x86_64"
 assert m["publisherSha256Matched"] and m["mbrEfiPartitionVerified"] and m["fatEfiBootloaderVerified"]
 assert not m["bootExecutionVerified"] and not m["linuxDistributionBootVerified"]
 assert r["outputSha256"]==expected==hashlib.file_digest(open(r["outputPath"],"rb"),"sha256").hexdigest()
@@ -95,5 +100,6 @@ qemu_pid=''
 python3 tests/virtual-media/alpine_boot_evidence.py \
   --report "$tmp/report.json" --serial "$tmp/alpine-serial.log" \
   --firmware "$code" --evidence-dir "$evidence_dir" \
-  --revision "$(git rev-parse HEAD)"
-echo "PASS: official SHA-pinned Alpine Linux 3.24.2 virtual ISO copied byte-for-byte and booted to serial login prompt in QEMU/OVMF."
+  --revision "$(git rev-parse HEAD)" \
+  --profile "alpine-virt-${alpine_version}-x86_64"
+echo "PASS: official SHA-pinned Alpine Linux $alpine_version virtual ISO copied byte-for-byte and booted to serial login prompt in QEMU/OVMF."

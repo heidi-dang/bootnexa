@@ -1,9 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { ALPINE_VIRT_3242, identifyVerifiedLinuxVirtualIso } from '../../src/known-linux-images';
+import { ALPINE_VIRT_3241, ALPINE_VIRT_3242, identifyVerifiedLinuxVirtualIso } from '../../src/known-linux-images';
 
 test('the read-only Alpine profile requires both an exact version-size and SHA-256', () => {
   expect(identifyVerifiedLinuxVirtualIso(ALPINE_VIRT_3242.imageBytes, ALPINE_VIRT_3242.sha256))
     .toEqual(ALPINE_VIRT_3242);
+  expect(identifyVerifiedLinuxVirtualIso(ALPINE_VIRT_3241.imageBytes, ALPINE_VIRT_3241.sha256))
+    .toEqual(ALPINE_VIRT_3241);
+  expect(identifyVerifiedLinuxVirtualIso(ALPINE_VIRT_3241.imageBytes + 1, ALPINE_VIRT_3241.sha256))
+    .toBeNull();
+  expect(identifyVerifiedLinuxVirtualIso(ALPINE_VIRT_3242.imageBytes, ALPINE_VIRT_3241.sha256.toUpperCase()))
+    .toBeNull();
   expect(identifyVerifiedLinuxVirtualIso(ALPINE_VIRT_3242.imageBytes + 512, ALPINE_VIRT_3242.sha256))
     .toBeNull();
   expect(identifyVerifiedLinuxVirtualIso(ALPINE_VIRT_3242.imageBytes, '0'.repeat(64)))
