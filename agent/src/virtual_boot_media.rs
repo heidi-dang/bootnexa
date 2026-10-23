@@ -263,6 +263,195 @@ impl VirtualBootMedia {
         Ok(hex::encode(expected))
     }
 
+    /// Developer-only, strictly bounded UDF-to-anonymous-FAT32 proof.
+    /// Not a real Windows installer image writer; caps are intentionally small.
+    /// Source contents are independently hashed before and after the copy,
+    /// and every FAT32 file is verified from the actual anonymous disk.
+    pub fn populate_restricted_udf_virtual<R: Read + Seek>(
+        &mut self,
+        image: &mut R,
+        image_bytes: u64,
+    ) -> Result<IsoCopyReport, MediaError> {
+        use crate::udf_stream::CheckedUdfSource;
+        let tree = crate::udf_tree::inspect(image, image_bytes).map_err(|_| MediaError::Corrupt)?;
+        if tree.file_paths.is_empty() || tree.inspected_paths > 512 {
+            return Err(MediaError::Capacity);
+        }
+        let mut entries = tree.file_paths.clone();
+        let total = entries
+            .iter()
+            .filter(|p| !p.directory)
+            .try_fold(0u64, |sum, p| sum.checked_add(p.file_bytes))
+            .ok_or(MediaError::Capacity)?;
+        if total > 48 * 1024 * 1024
+            || entries
+                .iter()
+                .any(|p| !p.directory && p.file_bytes > 32 * 1024 * 1024)
+        {
+            return Err(MediaError::Capacity);
+        }
+        let efi = entries
+            .iter()
+            .find(|p| p.path == "EFI/BOOT/BOOTX64.EFI" && !p.directory)
+            .ok_or(MediaError::Corrupt)?;
+        if !(0x100..=MAX_PAYLOAD as u64).contains(&efi.file_bytes) {
+            return Err(MediaError::Corrupt);
+        }
+        // FAT32 and Windows-style paths may alias reserved DOS device names
+        // despite being valid UDF strings. Do not create such entries.
+        for entry in &entries {
+            for component in entry.path.split('/') {
+                let stem = component.split('.').next().unwrap_or("");
+                if component.len() > 60
+                    || component.is_empty()
+                    || matches!(
+                        stem,
+                        "CON"
+                            | "PRN"
+                            | "AUX"
+                            | "NUL"
+                            | "COM1"
+                            | "COM2"
+                            | "COM3"
+                            | "COM4"
+                            | "COM5"
+                            | "COM6"
+                            | "COM7"
+                            | "COM8"
+                            | "COM9"
+                            | "LPT1"
+                            | "LPT2"
+                            | "LPT3"
+                            | "LPT4"
+                            | "LPT5"
+                            | "LPT6"
+                            | "LPT7"
+                            | "LPT8"
+                            | "LPT9"
+                    )
+                {
+                    return Err(MediaError::Corrupt);
+                }
+            }
+        }
+        entries.sort_by(|a, b| {
+            a.path
+                .split('/')
+                .count()
+                .cmp(&b.path.split('/').count())
+                .then(a.path.cmp(&b.path))
+        });
+        let mut hashes = std::collections::BTreeMap::<String, String>::new();
+        let mut buffer = [0u8; 64 * 1024];
+        for entry in entries.iter().filter(|p| !p.directory) {
+            let mut input = CheckedUdfSource::open(image, image_bytes, &entry.path)
+                .map_err(|_| MediaError::Corrupt)?;
+            if input.len() != entry.file_bytes {
+                return Err(MediaError::Corrupt);
+            }
+            let mut left = entry.file_bytes;
+            let mut hash = Sha256::new();
+            while left > 0 {
+                let n = left.min(buffer.len() as u64) as usize;
+                input.read_exact(&mut buffer[..n])?;
+                hash.update(&buffer[..n]);
+                left -= n as u64;
+            }
+            hashes.insert(entry.path.clone(), hex::encode(hash.finalize()));
+        }
+        {
+            let view = PartitionView::new(&mut self.file, &self.layout);
+            let fs = FileSystem::new(view, FsOptions::new())?;
+            if fs.fat_type() != FatType::Fat32 {
+                return Err(MediaError::Corrupt);
+            }
+            let root = fs.root_dir();
+            for entry in &entries {
+                if entry.directory {
+                    root.create_dir(&entry.path)?;
+                    continue;
+                }
+                let mut input = CheckedUdfSource::open(image, image_bytes, &entry.path)
+                    .map_err(|_| MediaError::Corrupt)?;
+                let mut target = root.create_file(&entry.path)?;
+                let mut left = entry.file_bytes;
+                let mut sha = Sha256::new();
+                while left > 0 {
+                    let n = left.min(buffer.len() as u64) as usize;
+                    input.read_exact(&mut buffer[..n])?;
+                    target.write_all(&buffer[..n])?;
+                    sha.update(&buffer[..n]);
+                    left -= n as u64;
+                }
+                target.flush()?;
+                if hashes.get(&entry.path).map(String::as_str)
+                    != Some(hex::encode(sha.finalize()).as_str())
+                {
+                    return Err(MediaError::Corrupt);
+                }
+            }
+            drop(root);
+            fs.unmount()?;
+        }
+        self.file.sync_all()?;
+        verify_partition_table(&mut self.file, &self.layout)?;
+        // Re-hash the original source after copying, then compare FAT32
+        // filesystem data through an independent FileSystem read path.
+        for entry in entries.iter().filter(|p| !p.directory) {
+            let mut input = CheckedUdfSource::open(image, image_bytes, &entry.path)
+                .map_err(|_| MediaError::Corrupt)?;
+            let mut sha = Sha256::new();
+            let mut left = entry.file_bytes;
+            while left > 0 {
+                let n = left.min(buffer.len() as u64) as usize;
+                input.read_exact(&mut buffer[..n])?;
+                sha.update(&buffer[..n]);
+                left -= n as u64;
+            }
+            if hashes.get(&entry.path).map(String::as_str)
+                != Some(hex::encode(sha.finalize()).as_str())
+            {
+                return Err(MediaError::Corrupt);
+            }
+        }
+        {
+            let view = PartitionView::new(&mut self.file, &self.layout);
+            let fs = FileSystem::new(view, FsOptions::new())?;
+            if fs.fat_type() != FatType::Fat32 {
+                return Err(MediaError::Corrupt);
+            }
+            let root = fs.root_dir();
+            for entry in entries.iter().filter(|p| !p.directory) {
+                let mut file = root.open_file(&entry.path)?;
+                let mut left = entry.file_bytes;
+                let mut sha = Sha256::new();
+                while left > 0 {
+                    let n = left.min(buffer.len() as u64) as usize;
+                    file.read_exact(&mut buffer[..n])?;
+                    sha.update(&buffer[..n]);
+                    left -= n as u64;
+                }
+                if file.read(&mut buffer[..1])? != 0
+                    || hashes.get(&entry.path).map(String::as_str)
+                        != Some(hex::encode(sha.finalize()).as_str())
+                {
+                    return Err(MediaError::Corrupt);
+                }
+            }
+        }
+        self.read_efi_application()?;
+        Ok(IsoCopyReport {
+            virtual_only: true,
+            physical_write_authorized: false,
+            windows_setup_verified: false,
+            linux_boot_verified: false,
+            boot_execution_verified: false,
+            full_partition_table_verified: true,
+            source_files: hashes.len(),
+            verified_files: hashes.len(),
+            verified_bytes: total,
+        })
+    }
     /// Copy an entire explicitly supported ISO9660 file tree to an anonymous
     /// FAT32 virtual disk. Never accepts a host OS block device or file path.
     /// Windows/Linux installer candidates fail closed until independently

@@ -60,6 +60,29 @@ mod tests {
         assert!(parse_wim(&mut Cursor::new(&bytes), &entry(&bytes)).is_err());
     }
     #[test]
+    fn wim_outer_resource_ranges_are_bounded_without_claiming_resource_integrity() {
+        let mut bytes = wim_fixture();
+        bytes.resize(1024, 0);
+        // Lookup table descriptor: 32 compressed bytes at offset 256.
+        bytes[48..56].copy_from_slice(&32u64.to_le_bytes());
+        bytes[56..64].copy_from_slice(&256u64.to_le_bytes());
+        bytes[64..72].copy_from_slice(&64u64.to_le_bytes());
+        let report = parse_wim(&mut Cursor::new(&bytes), &entry(&bytes)).unwrap();
+        assert!(report.resource_ranges_bounded);
+        assert!(!report.resources_verified);
+        // Truncated resource spills past EOF.
+        bytes[56..64].copy_from_slice(&1010u64.to_le_bytes());
+        assert!(parse_wim(&mut Cursor::new(&bytes), &entry(&bytes)).is_err());
+        bytes[56..64].copy_from_slice(&256u64.to_le_bytes());
+        // XML resource overlaps lookup table but has internally valid bounds.
+        bytes[72..80].copy_from_slice(&16u64.to_le_bytes());
+        bytes[80..88].copy_from_slice(&260u64.to_le_bytes());
+        bytes[88..96].copy_from_slice(&16u64.to_le_bytes());
+        assert!(parse_wim(&mut Cursor::new(&bytes), &entry(&bytes)).is_err());
+        bytes[80..88].copy_from_slice(&512u64.to_le_bytes());
+        assert!(parse_wim(&mut Cursor::new(&bytes), &entry(&bytes)).is_ok());
+    }
+    #[test]
     fn rejects_untrusted_efi_and_reports_no_boot_success() {
         let bytes = vec![0u8; 512];
         let efi = IsoFile {

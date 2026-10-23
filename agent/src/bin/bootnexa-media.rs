@@ -177,6 +177,50 @@ fn run() -> Result<(), Box<dyn Error>> {
             println!("{}",json!({"readOnly":true,"physicalWriteAuthorized":false,
                 "plan":classify(&tree),"files":tree.files}));
         }
+        [op, source, output_dir] if op == "build-udf-small-virtual" => {
+            // Limited UDF -> anonymous GPT/FAT32 *regular-file* demonstration.
+            // Does not create real Windows installer media or authorize USB.
+            let mut input=File::open(source)?;
+            let metadata=input.metadata()?;
+            if !metadata.is_file() || metadata.len()>256*1024*1024 {
+                return Err("UDF demonstration input must be a <=256MiB regular file".into());
+            }
+            let dir=PathBuf::from(output_dir);
+            if !fs::symlink_metadata(&dir)?.file_type().is_dir() {
+                return Err("virtual output parent must be an existing real directory".into());
+            }
+            let dir=fs::canonicalize(dir)?;
+            let mut disk=VirtualBootMedia::new(96*1024*1024,Scheme::Gpt)?;
+            let report=disk.populate_restricted_udf_virtual(&mut input,metadata.len())?;
+            let destination=dir.join(format!("bootnexa-udf-demo-{}.img",Uuid::new_v4().simple()));
+            let mut output=OpenOptions::new().read(true).write(true).create_new(true).open(&destination)?;
+            let result=disk.export_to_regular_file(&mut output);
+            let digest=match result {
+                Ok(digest)=>{
+                    let finalize=output.sync_all().and_then(|_|output.metadata());
+                    match finalize {
+                        Ok(meta) if meta.is_file() && meta.len()==96*1024*1024 => digest,
+                        _ =>{
+                            drop(output);
+                            let _=fs::remove_file(&destination);
+                            return Err("virtual output finalization failed".into());
+                        }
+                    }
+                }
+                Err(error)=>{
+                    drop(output);
+                    let _=fs::remove_file(&destination);
+                    return Err(error.into());
+                }
+            };
+            println!("{}",json!({
+                "virtualOnly":true,"physicalWriteAuthorized":false,
+                "windowsSetupBootVerified":false,"installerCompatible":false,
+                "udfProfile":"restricted_small_virtual_demo",
+                "sourceBytes":metadata.len(),"outputPath":destination.to_string_lossy(),
+                "outputSha256":digest,"media":report
+            }));
+        }
         [op, source, output_dir] if op == "build-from-iso" => {
             let mut input=File::open(source)?;
             let metadata=input.metadata()?;
@@ -238,7 +282,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 "outputSha256":digest,"media":report
             }));
         }
-        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | inspect-udf-structure <UDF-ISO> | inspect-udf-tree <restricted-UDF-ISO> | inspect-windows-iso <ISO> | plan-windows-media <ISO> | stage-windows-virtual-cdrom <supported-plain-ISO9660-ISO> <existing-output-directory> | plan-iso <ISO> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-alpine-virtual <verified-Alpine-virt-3.24.1-or-3.24.2-x86_64.iso> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
+        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | inspect-udf-structure <UDF-ISO> | inspect-udf-tree <restricted-UDF-ISO> | inspect-windows-iso <ISO> | plan-windows-media <ISO> | stage-windows-virtual-cdrom <supported-plain-ISO9660-ISO> <existing-output-directory> | plan-iso <ISO> | build-udf-small-virtual <restricted-UDF-ISO> <real-output-directory> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-alpine-virtual <verified-Alpine-virt-3.24.1-or-3.24.2-x86_64.iso> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
     }
     Ok(())
 }

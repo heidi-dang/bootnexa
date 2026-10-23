@@ -5,6 +5,7 @@ No Windows binaries, data extraction, physical writes, real installer execution.
 """
 from pathlib import Path
 import binascii
+import hashlib
 import json
 import struct
 import subprocess
@@ -59,8 +60,11 @@ with tempfile.TemporaryDirectory(prefix="bootnexa-udf-structure-") as tmp:
     subprocess.run([sys.executable,"tests/virtual-media/create-iso-fixture.py",str(efi),
                     str(iso),"--profile","windows-preflight"],check=True)
     source(iso)
-    def invoke(op,p=iso):
-        return subprocess.run([str(CLI),op,str(p)],capture_output=True,text=True)
+    def invoke(op,p=iso,out=None):
+        cmd=[str(CLI),op,str(p)]
+        if out is not None:
+            cmd.append(str(out))
+        return subprocess.run(cmd,capture_output=True,text=True)
     d=invoke("inspect-udf-structure")
     assert d.returncode==0,d.stderr
     u=json.loads(d.stdout)
@@ -139,7 +143,7 @@ with tempfile.TemporaryDirectory(prefix="bootnexa-udf-structure-") as tmp:
         (2,4,3,root_names),(4,4,5,sources_names),
         (6,5,7,b"FAKE-BOOT-WIM"),(8,5,9,b"FAKE-INSTALL-WIM"),
         (10,4,11,efi_names),(12,4,13,boot_names),
-        (14,5,15,b"MZ-FAKE-EFI"),(16,5,17,b"MZ-FAKE-SETUP")]
+        (14,5,15,efi.read_bytes()),(16,5,17,b"MZ-FAKE-SETUP")]
     with treeiso.open("r+b") as f:
         for block,kind,data_block,payload in entries:
             f.seek((280+block)*BLK)
@@ -167,9 +171,77 @@ with tempfile.TemporaryDirectory(prefix="bootnexa-udf-structure-") as tmp:
     assert observed["windowsSetupBootVerified"] is False
     paths={p["path"]:p["fileBytes"] for p in observed["filePaths"]}
     assert paths["SOURCES/INSTALL.WIM"]==len(b"FAKE-INSTALL-WIM")
-    assert paths["EFI/BOOT/BOOTX64.EFI"]==len(b"MZ-FAKE-EFI")
+    assert paths["EFI/BOOT/BOOTX64.EFI"]==len(efi.read_bytes())
     assert invoke("stage-windows-virtual-cdrom",treeiso).returncode != 0
     print("PASS bounded UDF FID traversal detects synthetic Windows-shaped names with zero write/extraction authority")
+
+    # 96MiB GPT+FAT32 is a regular-file demo; the synthetic file names and
+    # PE header are not Microsoft payload or Windows Setup qualification.
+    source_digest=hashlib.file_digest(treeiso.open("rb"),"sha256").hexdigest()
+    built=invoke("build-udf-small-virtual",treeiso,root)
+    assert built.returncode==0,built.stderr
+    receipt=json.loads(built.stdout)
+    output=Path(receipt["outputPath"])
+    assert output.parent==root and output.is_file()
+    assert output.stat().st_size==96*1024*1024
+    assert hashlib.file_digest(output.open("rb"),"sha256").hexdigest()==receipt["outputSha256"]
+    assert hashlib.file_digest(treeiso.open("rb"),"sha256").hexdigest()==source_digest
+    assert receipt["virtualOnly"] is True and receipt["physicalWriteAuthorized"] is False
+    assert receipt["installerCompatible"] is False and receipt["windowsSetupBootVerified"] is False
+    assert receipt["media"]["verifiedFiles"]==4
+    assert receipt["media"]["sourceFiles"]==4
+    assert receipt["media"]["fullPartitionTableVerified"] is True
+    assert receipt["media"]["bootExecutionVerified"] is False
+    assert receipt["media"]["verifiedBytes"]==sum(len(p) for _,kind,_,p in entries if kind==5)
+    print("PASS synthetic UDF file streams -> anonymous GPT/FAT32 -> regular image with per-file and full-image readback")
+
+    # Exercise a deliberately fragmented UDF file: the second extent is
+    # disjoint and sector-aligned, while logical byte counts stay exact.
+    multi=root/"two-extent-udf.iso"
+    multi.write_bytes(treeiso.read_bytes())
+    with multi.open("r+b") as f:
+        f.seek(288*BLK)
+        header=bytearray(f.read(BLK))
+        payload=b"FAKE-INSTALL-WIM"
+        put32(header,172,16)
+        put32(header,176,4)
+        put32(header,180,9)
+        put32(header,184,len(payload)-4)
+        put32(header,188,19)
+        put16(header,8,binascii.crc_hqx(header[16:512],0))
+        header[4]=sum(header[i] for i in range(16) if i!=4)&255
+        f.seek(288*BLK);f.write(header)
+        f.seek(299*BLK);f.write(payload[4:])
+    result=invoke("build-udf-small-virtual",multi,root)
+    assert result.returncode==0,result.stderr
+    multi_receipt=json.loads(result.stdout)
+    assert multi_receipt["media"]["verifiedFiles"]==4
+    assert not multi_receipt["windowsSetupBootVerified"]
+    print("PASS verified fragmented two-extent UDF source streams to GPT/FAT32")
+
+    overlap=root/"overlap-udf.iso"
+    overlap.write_bytes(multi.read_bytes())
+    with overlap.open("r+b") as f:
+        f.seek(288*BLK);header=bytearray(f.read(BLK))
+        put32(header,188,9)
+        put16(header,8,binascii.crc_hqx(header[16:512],0))
+        header[4]=sum(header[i] for i in range(16) if i!=4)&255
+        f.seek(288*BLK);f.write(header)
+    before=set(root.glob("bootnexa-udf-demo-*.img"))
+    assert invoke("build-udf-small-virtual",overlap,root).returncode!=0
+    assert set(root.glob("bootnexa-udf-demo-*.img"))==before
+    print("PASS rejects CRC-valid overlapping UDF data extents without exporting output")
+
+    oversized=root/"oversized-udf.iso"
+    with oversized.open("wb") as f:
+        f.truncate(257*1024*1024)
+    assert invoke("build-udf-small-virtual",oversized,root).returncode!=0
+    print("PASS refuses >256 MiB ISO input without allocating virtual output")
+
+    symlink=root/"symlink-destination"
+    symlink.symlink_to(root,target_is_directory=True)
+    assert invoke("build-udf-small-virtual",treeiso,symlink).returncode!=0
+    print("PASS UDF virtual builder rejects symlink output parent")
     for title,lba,relative in [
         ("fid-crc",283,8),("fid-name",283,42),
         ("inode-content-address",286,180),("dir-root",282,56)]:

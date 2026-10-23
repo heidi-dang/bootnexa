@@ -98,6 +98,7 @@ mod tests {
             header_flags: 0,
             boot_index: 0,
             resources_verified: false,
+            resource_ranges_bounded: true,
             solid_archive: false,
             part_number: 1,
             total_parts: 1,

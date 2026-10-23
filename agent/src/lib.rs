@@ -32,6 +32,7 @@ pub mod iso_tree;
 pub mod hybrid_iso;
 
 pub mod alpine_iso;
+mod udf_stream;
 pub mod udf_structure;
 pub mod udf_tree;
 pub mod windows_iso;
