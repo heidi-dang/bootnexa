@@ -16,6 +16,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - run: python3 tests/virtual-media/verify-linux-profile.py
+      - run: python3 -m unittest discover -s tests/virtual-media -p 'test_*.py' -v
       - run: npm run typecheck
       - run: npm run build
       - run: npx playwright install --with-deps chromium
@@ -42,6 +44,14 @@ jobs:
           sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf
       - name: Verify official Alpine SHA-256, copy to virtual disk, boot OS
         run: bash ./tests/virtual-media/alpine-virt-ovmf.sh
+      - name: Preserve CI-only virtual boot evidence and failure logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpine-virt-ovmf-evidence
+          path: test-results/alpine-virtual-boot/
+          if-no-files-found: warn
+          retention-days: 14
 
   rust:
     strategy:

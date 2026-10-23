@@ -2,12 +2,25 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 tmp="$(mktemp -d)"
+# Retain bounded CI-only emulator evidence outside the disposable image folder.
+evidence_dir="${BOOTNEXA_EVIDENCE_DIR:-test-results/alpine-virtual-boot}"
+mkdir -p "$evidence_dir"
+if [[ -L "$evidence_dir" ]]; then echo "Refusing symlink evidence directory"; exit 1; fi
+if [[ -e "$evidence_dir/alpine-boot-evidence.json" || -L "$evidence_dir/alpine-boot-evidence.json" ]]; then
+  echo "Refusing stale success evidence: use a fresh evidence directory"; exit 1
+fi
 qemu_pid=''
 cleanup() {
   if [[ -n "$qemu_pid" ]]; then
     kill "$qemu_pid" 2>/dev/null || true
     wait "$qemu_pid" 2>/dev/null || true
   fi
+  # Real vendor-ISO CI logs, never a user ISO or physical-device contents.
+  for log in alpine-serial.log qemu.log ovmf-debug.log; do
+    if [[ -f "$tmp/$log" && ! -L "$tmp/$log" ]]; then
+      head -c 4194304 "$tmp/$log" > "$evidence_dir/$log" || true
+    fi
+  done
   rm -rf "$tmp"
 }
 trap cleanup EXIT
@@ -75,4 +88,12 @@ if [[ "$booted" -ne 1 ]];then
   echo "qemu tail:"; tail -c 2500 "$tmp/qemu.log" || true
   exit 1
 fi
+# Freeze the serial transcript before its SHA-256 is recorded in the receipt.
+kill "$qemu_pid" 2>/dev/null || true
+wait "$qemu_pid" 2>/dev/null || true
+qemu_pid=''
+python3 tests/virtual-media/alpine_boot_evidence.py \
+  --report "$tmp/report.json" --serial "$tmp/alpine-serial.log" \
+  --firmware "$code" --evidence-dir "$evidence_dir" \
+  --revision "$(git rev-parse HEAD)"
 echo "PASS: official SHA-pinned Alpine Linux 3.24.2 virtual ISO copied byte-for-byte and booted to serial login prompt in QEMU/OVMF."

@@ -3,6 +3,7 @@ import { Disc3, FileUp, Info, ShieldCheck } from 'lucide-react';
 import { inspectIsoBoot, type IsoBootEvidence } from './iso-boot-evidence';
 import { inspectVirtualIsoPlan, type VirtualIsoPlan } from './iso-virtual-plan';
 import { useImageAnalysis } from './use-image-analysis';
+import { identifyVerifiedLinuxVirtualIso } from './known-linux-images';
 function sizeLabel(bytes: number) {
   return bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + ' MiB' : bytes + ' bytes';
 }
@@ -29,6 +30,7 @@ export function IsoLibrary() {
     return () => { active = false; };
   }, [file]);
   const details = analysis.status === 'complete' ? analysis.result : null;
+  const knownLinux = details && file ? identifyVerifiedLinuxVirtualIso(file.size,details.sha256) : null;
   return <div className="iso-library-view">
     <div className="page-heading">
       <div><div className="eyebrow"><Disc3 size={14}/> LOCAL MEDIA INTELLIGENCE</div>
@@ -76,16 +78,19 @@ export function IsoLibrary() {
           <div className="section-title"><span className="number">03</span><div><h2>Virtual media compatibility</h2>
             <p>Bounded read-only directory traversal; preparation is not a supported disk-writing operation.</p></div></div>
           <div className="summary-data">
-            <div><span>Detected media profile</span><strong data-testid="iso-profile">{virtualPlan?.profile ?? 'Not qualified'}</strong></div>
-            <div><span>Virtual EFI conversion</span><strong data-testid="iso-virtual-eligible">{virtualPlan?.virtualEfiEligible ? 'Developer-only candidate' : 'Disabled / unsupported'}</strong></div>
-            <div><span>Files inspected</span><strong>{virtualPlan?.fileCount ?? '—'}</strong></div>
-            <div><span>Recognised file bytes</span><strong>{virtualPlan ? sizeLabel(virtualPlan.totalBytes) : '—'}</strong></div>
-            <div><span>Windows / Linux installer boot</span><strong>Not verified</strong></div>
+            <div><span>Detected media profile</span><strong data-testid="iso-profile">{knownLinux?.profile ?? virtualPlan?.profile ?? 'Not qualified'}</strong></div>
+            <div><span>Virtual EFI conversion</span><strong data-testid="iso-virtual-eligible">{knownLinux ? 'Verified virtual profile (CLI only)' : virtualPlan?.virtualEfiEligible ? 'Developer-only candidate' : 'Disabled / unsupported'}</strong></div>
+            <div><span>Files inspected</span><strong>{knownLinux ? 'Not extracted (raw ISO)' : virtualPlan?.fileCount ?? '—'}</strong></div>
+            <div><span>Recognised file bytes</span><strong>{knownLinux ? sizeLabel(knownLinux.imageBytes) : virtualPlan ? sizeLabel(virtualPlan.totalBytes) : '—'}</strong></div>
+            <div><span>OS boot evidence</span><strong>{knownLinux ? 'Alpine QEMU login verified (exact ISO only)' : 'Not verified'}</strong></div>
             <div><span>Physical USB write authorisation</span><strong>No</strong></div>
           </div>
-          {virtualPlan && <p className="notice" role="status">{virtualPlan.reason}</p>}
-          {virtualPlanError && <p className="helper" data-testid="iso-plan-error">Unsupported or invalid directory structure: {virtualPlanError}</p>}
-          {virtualPlan && virtualPlan.samplePaths.length>0 && <div className="hash-row">
+          {knownLinux && <p className="notice" role="status" data-testid="iso-verified-linux-profile">
+            Exact publisher-pinned SHA-256 matches Alpine virt 3.24.2 x86_64. Its virtual-disk copy has been verified to boot to Linux login in QEMU/OVMF. Physical USB boot, installation and other Alpine releases are not qualified. Use the developer CLI for virtual copying; this page never writes a disk.
+          </p>}
+          {!knownLinux && virtualPlan && <p className="notice" role="status">{virtualPlan.reason}</p>}
+          {virtualPlanError && !knownLinux && <p className="helper" data-testid="iso-plan-error">Unsupported or invalid directory structure: {virtualPlanError}</p>}
+          {!knownLinux && virtualPlan && virtualPlan.samplePaths.length>0 && <div className="hash-row">
             <strong>Recognised files (first {virtualPlan.samplePaths.length})</strong>
             <ul data-testid="iso-files">{virtualPlan.samplePaths.map(path=><li key={path}><code>{path}</code></li>)}</ul>
           </div>}
@@ -100,6 +105,7 @@ export function IsoLibrary() {
             <div><span>Size</span><strong>{file ? sizeLabel(file.size) : '—'}</strong></div>
             <div><span>Signature</span><strong>{details?.kind || 'Not inspected'}</strong></div>
             <div><span>SHA-256</span><strong>{details ? 'Computed' : 'Pending'}</strong></div>
+            <div><span>Publisher-pinned Linux profile</span><strong>{knownLinux ? 'Exact digest match' : 'Not matched'}</strong></div>
           </div>
           {details && <div className="hash-row" style={{ overflowWrap: 'anywhere', fontSize: '11px' }}><code data-testid="library-sha256">{details.sha256}</code></div>}
           <p className="helper">No ISO extraction, WIM modifications, UEFI signing, partition writes or image installation is performed.</p>
