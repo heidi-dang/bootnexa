@@ -14,7 +14,7 @@ The checksums were compared with the official Alpine HTTPS-hosted `.sha256` file
 Official images: https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/x86_64/
 Publisher: https://www.alpinelinux.org/downloads/
 
-The 3.24.2 virtual-OS boot-to-login result is proven by earlier CI. The newly added 3.24.1 matrix job must pass a separate real QEMU/OVMF boot-to-login CI gate before the second profile may be considered boot-qualified.
+Both 3.24.2 and 3.24.1 passed **independent QEMU/OVMF Linux serial login gates** in GitHub Actions [PR #27, run #39915670601](https://github.com/heidi-dang/bootnexa/actions/runs/39915670601). Both version-specific CI evidence artifacts contain the expected official source and read-back SHA-256, a hashed guest-login transcript, and explicit `false` physical USB write, physical boot and Secure Boot claims. The source revision recorded by the CI receipts is the GitHub **pull-request validation merge revision** (`f744e88758e9747709a589fbe54fff12f534eda3`), *not* the separately produced squash-merged `main` SHA (`ac1dbfd96593ee4fab7874714b146c77f479d0d9`). These are CI observations, not independent signed attestations.
 
 ## Native preflight and virtual-only execution
 
