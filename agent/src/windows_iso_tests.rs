@@ -43,6 +43,23 @@ mod tests {
         assert!(parse_wim(&mut Cursor::new(&bytes), &entry(&bytes)).is_err());
     }
     #[test]
+    fn solid_esd_header_is_metadata_only_and_boot_index_is_bounded() {
+        let mut bytes = wim_fixture();
+        bytes[12..16].copy_from_slice(&0xe00u32.to_le_bytes());
+        bytes[120..124].copy_from_slice(&1u32.to_le_bytes());
+        let header = parse_wim(&mut Cursor::new(&bytes), &entry(&bytes)).unwrap();
+        assert!(header.solid_archive);
+        assert_eq!(header.boot_index, 1);
+        assert!(!header.resources_verified);
+        bytes[120..124].copy_from_slice(&3u32.to_le_bytes());
+        assert!(parse_wim(&mut Cursor::new(&bytes), &entry(&bytes)).is_err());
+        bytes[120..124].copy_from_slice(&1u32.to_le_bytes());
+        bytes[16..20].copy_from_slice(&0x08u32.to_le_bytes());
+        assert!(parse_wim(&mut Cursor::new(&bytes), &entry(&bytes)).is_err());
+        bytes[16..20].copy_from_slice(&0x40u32.to_le_bytes());
+        assert!(parse_wim(&mut Cursor::new(&bytes), &entry(&bytes)).is_err());
+    }
+    #[test]
     fn rejects_untrusted_efi_and_reports_no_boot_success() {
         let bytes = vec![0u8; 512];
         let efi = IsoFile {

@@ -56,7 +56,18 @@ with tempfile.TemporaryDirectory(prefix="bootnexa-windows-virtual-") as director
     assert result["x64EfiLoaderHeaderValid"] and result["setupExeObserved"]
     assert result["bootWim"]["imageCount"] == result["installWim"]["imageCount"] == 1
     assert not result["wimSplitImplemented"] and not result["udfTranslationSupported"]
-    print("PASS bounded Windows-like ISO9660 metadata and WIM header inspection")
+    assert result["bootWim"]["resourcesVerified"] is False
+    assert result["installWim"]["resourcesVerified"] is False
+    assert result["udfStructuralMetadataVerified"] is False
+    layout_run = run("plan-windows-media")
+    assert layout_run.returncode == 0, layout_run.stderr
+    layout = json.loads(layout_run.stdout)["layoutPlan"]
+    assert layout["installPayloadKind"] == "WIM"
+    assert layout["fat32FileFitObserved"] is True
+    assert not layout["actionable"]
+    assert not layout["virtualUsbBuilderImplemented"]
+    assert not layout["wimResourceIntegrityVerified"]
+    print("PASS bounded Windows-like ISO9660 metadata, header integrity flags and read-only FAT32 plan")
 
     stage = run("stage-windows-virtual-cdrom")
     assert stage.returncode == 0, stage.stderr

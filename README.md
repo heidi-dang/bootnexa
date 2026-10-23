@@ -255,7 +255,7 @@ Read-only ISO planning and small ISO9660 x64 EFI extraction to a GPT/FAT32 **reg
 
 The developer-only `build-hybrid-virtual` command performs sector-perfect anonymous-file copying for a strictly constrained ISO9660 + BootNexa-layout GPT/FAT32 dual-format fixture. Whole-file SHA-256, GPT CRC, matched ISO/ESP EFI payload and QEMU/OVMF synthetic boot checks are required. This does **not** support arbitrary Linux ISO installation media or physical USB writes. Details: [hybrid ISO virtual proof](doc/HYBRID-ISO-VIRTUAL-PROOF.md).
 
-### Windows Setup ISO metadata and virtual CD-ROM staging (Phase 8 experimental)
+### Windows Setup ISO metadata, UDF structure and FAT32 planning (Phase 8 experimental)
 
 The developer-only `inspect-windows-iso` and `stage-windows-virtual-cdrom` commands validate bounded ISO9660, outer WIM/ESD headers, x64 EFI PE headers and optical-boot catalogs, then optionally create a new bit-exact **regular-file virtual ISO** with full SHA-256 read-back. The browser shows Windows payload metadata and UDF limitations. **No real Windows Setup boot, UDF traversal, WIM splitting, virtual USB disk, installer customization or physical USB write is implemented.** A Windows Setup-shaped synthetic test image is not a genuine installer. See [Windows ISO Phase 8 scope and remaining gates](doc/WINDOWS-ISO-VIRTUAL-PREFLIGHT.md).
 

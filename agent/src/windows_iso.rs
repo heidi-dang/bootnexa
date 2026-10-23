@@ -4,6 +4,7 @@
 use crate::{
     iso_inspect,
     iso_tree::{self, IsoFile},
+    udf_structure,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -36,6 +37,10 @@ pub enum WindowsIsoError {
 pub struct WimHeader {
     pub image_count: u32,
     pub format_version: u32,
+    pub header_flags: u32,
+    pub boot_index: u32,
+    pub resources_verified: bool,
+    pub solid_archive: bool,
     pub part_number: u16,
     pub total_parts: u16,
     pub file_bytes: u64,
@@ -54,6 +59,8 @@ pub struct WindowsIsoReport {
     pub source_filesystem: &'static str,
     pub udf_translation_supported: bool,
     pub udf_signature_observed: bool,
+    pub udf_structural_metadata_verified: bool,
+    pub udf_structure: Option<udf_structure::UdfVolume>,
     pub el_torito_uefi_catalog: bool,
     pub x64_efi_loader_header_valid: bool,
     pub setup_exe_observed: bool,
@@ -84,12 +91,16 @@ fn parse_wim<R: Read + Seek>(file: &mut R, entry: &IsoFile) -> Result<WimHeader,
     }
     let header_bytes = u32::from_le_bytes(header[8..12].try_into().unwrap());
     let format_version = u32::from_le_bytes(header[12..16].try_into().unwrap());
+    let flags = u32::from_le_bytes(header[16..20].try_into().unwrap());
+    let boot_index = u32::from_le_bytes(header[120..124].try_into().unwrap());
     let part_number = u16::from_le_bytes(header[40..42].try_into().unwrap());
     let total_parts = u16::from_le_bytes(header[42..44].try_into().unwrap());
     let image_count = u32::from_le_bytes(header[44..48].try_into().unwrap());
     if !(204..=4096).contains(&header_bytes)
         || header_bytes as u64 > entry.length
-        || format_version != 0x00010d00
+        || !matches!(format_version, 0x00010d00 | 0x00000e00)
+        || flags & (0x08 | 0x40) != 0
+        || boot_index > image_count
         || !(1..=256).contains(&image_count)
         || part_number != 1
         || total_parts != 1
@@ -99,6 +110,10 @@ fn parse_wim<R: Read + Seek>(file: &mut R, entry: &IsoFile) -> Result<WimHeader,
     Ok(WimHeader {
         image_count,
         format_version,
+        header_flags: flags,
+        boot_index,
+        resources_verified: false,
+        solid_archive: format_version == 0x00000e00,
         part_number,
         total_parts,
         file_bytes: entry.length,
@@ -159,6 +174,13 @@ pub fn inspect<R: Read + Seek>(
     }
     let iso = iso_inspect::inspect(file, image_bytes)?;
     let udf_observed = iso.udf_recognition || has_udf_vrs(file, image_bytes)?;
+    // Invalid or unsupported UDF metadata does not authorize ISO content.
+    // UDF file traversal and optical staging still fail closed in all cases.
+    let udf_metadata = if udf_observed {
+        udf_structure::inspect(file, image_bytes).ok()
+    } else {
+        None
+    };
     let tree = iso_tree::enumerate_windows_metadata(file, image_bytes)?;
     let get = |path: &str| tree.files.iter().find(|entry| entry.path == path);
     let boot = get("SOURCES/BOOT.WIM");
@@ -204,6 +226,8 @@ pub fn inspect<R: Read + Seek>(
         source_filesystem: "iso9660_primary_metadata_only",
         udf_translation_supported: false,
         udf_signature_observed: udf_observed,
+        udf_structural_metadata_verified: udf_metadata.is_some(),
+        udf_structure: udf_metadata,
         el_torito_uefi_catalog: iso.uefi_catalog_entry,
         x64_efi_loader_header_valid: loader_valid,
         setup_exe_observed: setup_exe,
