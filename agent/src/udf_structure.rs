@@ -34,13 +34,17 @@ pub struct UdfVolume {
     pub file_set_descriptor_lba: u32,
     pub root_icb_lba: u32,
 }
-fn u16_at(bytes: &[u8], pos: usize) -> u16 {
+pub(crate) fn u16_at(bytes: &[u8], pos: usize) -> u16 {
     u16::from_le_bytes([bytes[pos], bytes[pos + 1]])
 }
-fn u32_at(bytes: &[u8], pos: usize) -> u32 {
+pub(crate) fn u32_at(bytes: &[u8], pos: usize) -> u32 {
     u32::from_le_bytes(bytes[pos..pos + 4].try_into().unwrap())
 }
-fn sector<R: Read + Seek>(r: &mut R, image_bytes: u64, lba: u64) -> Result<[u8; 2048], UdfError> {
+pub(crate) fn sector<R: Read + Seek>(
+    r: &mut R,
+    image_bytes: u64,
+    lba: u64,
+) -> Result<[u8; 2048], UdfError> {
     let start = lba.checked_mul(BLOCK).ok_or(UdfError::Corrupt)?;
     if start.checked_add(BLOCK).is_none_or(|end| end > image_bytes) {
         return Err(UdfError::Corrupt);
@@ -50,7 +54,7 @@ fn sector<R: Read + Seek>(r: &mut R, image_bytes: u64, lba: u64) -> Result<[u8; 
     r.read_exact(&mut data)?;
     Ok(data)
 }
-fn crc16(data: &[u8]) -> u16 {
+pub(crate) fn crc16(data: &[u8]) -> u16 {
     let mut crc = 0u16;
     for &byte in data {
         crc ^= (byte as u16) << 8;
@@ -64,7 +68,7 @@ fn crc16(data: &[u8]) -> u16 {
     }
     crc
 }
-fn tag(data: &[u8; 2048], lba: u64, wanted: u16) -> Result<(), UdfError> {
+pub(crate) fn tag(data: &[u8; 2048], lba: u64, wanted: u16) -> Result<(), UdfError> {
     if u16_at(data, 0) != wanted
         || !matches!(u16_at(data, 2), 2 | 3)
         || u32_at(data, 12) as u64 != lba
@@ -94,7 +98,7 @@ fn tag(data: &[u8; 2048], lba: u64, wanted: u16) -> Result<(), UdfError> {
     }
     Ok(())
 }
-fn partition_lba(
+pub(crate) fn partition_lba(
     block: u32,
     partition_start: u32,
     partition_blocks: u32,

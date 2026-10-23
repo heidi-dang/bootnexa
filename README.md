@@ -257,7 +257,7 @@ The developer-only `build-hybrid-virtual` command performs sector-perfect anonym
 
 ### Windows Setup ISO metadata, UDF structure and FAT32 planning (Phase 8 experimental)
 
-The developer-only `inspect-windows-iso` and `stage-windows-virtual-cdrom` commands validate bounded ISO9660, outer WIM/ESD headers, x64 EFI PE headers and optical-boot catalogs, then optionally create a new bit-exact **regular-file virtual ISO** with full SHA-256 read-back. The browser shows Windows payload metadata and UDF limitations. **No real Windows Setup boot, UDF traversal, WIM splitting, virtual USB disk, installer customization or physical USB write is implemented.** A Windows Setup-shaped synthetic test image is not a genuine installer. See [Windows ISO Phase 8 scope and remaining gates](doc/WINDOWS-ISO-VIRTUAL-PREFLIGHT.md).
+The developer-only `inspect-windows-iso`, `inspect-udf-structure`, `inspect-udf-tree`, `plan-windows-media` and `stage-windows-virtual-cdrom` commands validate bounded ISO9660 and restricted UDF directory metadata, outer WIM/ESD headers, x64 EFI PE headers and optical-boot catalogs, then optionally create a new bit-exact **regular-file virtual ISO** with full SHA-256 read-back. The browser shows Windows payload metadata and UDF limitations. **No real Windows Setup boot, UDF traversal, WIM splitting, virtual USB disk, installer customization or physical USB write is implemented.** A Windows Setup-shaped synthetic test image is not a genuine installer. See [Windows ISO Phase 8 scope and remaining gates](doc/WINDOWS-ISO-VIRTUAL-PREFLIGHT.md).
 
 ### Exact-release Alpine Linux virtual ISO preflight (experimental)
 
