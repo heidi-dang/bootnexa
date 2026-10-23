@@ -35,6 +35,10 @@ jobs:
         run: bash ./tests/virtual-media/boot-ovmf.sh
 
   linux_iso_boot:
+    strategy:
+      fail-fast: false
+      matrix:
+        alpine_version: ['3.24.1', '3.24.2']
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,13 +47,13 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf
       - name: Verify official Alpine SHA-256, copy to virtual disk, boot OS
-        run: bash ./tests/virtual-media/alpine-virt-ovmf.sh
+        run: bash ./tests/virtual-media/alpine-virt-ovmf.sh "${{ matrix.alpine_version }}"
       - name: Preserve CI-only virtual boot evidence and failure logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: alpine-virt-ovmf-evidence
-          path: test-results/alpine-virtual-boot/
+          name: alpine-virt-ovmf-evidence-${{ matrix.alpine_version }}
+          path: test-results/alpine-virtual-boot/${{ matrix.alpine_version }}/
           if-no-files-found: warn
           retention-days: 14
 

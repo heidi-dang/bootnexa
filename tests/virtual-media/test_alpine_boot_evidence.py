@@ -53,9 +53,9 @@ class AlpineBootEvidenceTests(unittest.TestCase):
     def write_native(self):
         self.report.write_text(json.dumps(self.native), encoding="utf-8")
 
-    def generate(self):
+    def generate(self, profile=evidence.PROFILE):
         return evidence.produce_evidence(self.report, self.serial, self.firmware,
-                                         self.path, "a" * 40)
+                                         self.path, "a" * 40, profile)
 
     def test_ci_receipt_is_explicitly_virtual_and_contains_no_local_paths(self):
         receipt = self.generate()
@@ -123,6 +123,27 @@ class AlpineBootEvidenceTests(unittest.TestCase):
             receipt["firmwareSha256"],
             hashlib.sha256(source.read_bytes()).hexdigest(),
         )
+
+    def test_second_pinned_profile_produces_distinct_virtual_only_evidence(self):
+        self.native["media"]["distroProfile"] = evidence.PROFILE_3241
+        self.write_native()
+        with patch.object(evidence, "EXPECTED_SHA256_3241", self.digest), \
+                patch.object(evidence, "EXPECTED_BYTES_3241", self.output.stat().st_size):
+            receipt = self.generate(profile=evidence.PROFILE_3241)
+            self.assertEqual(receipt["profile"], evidence.PROFILE_3241)
+            self.assertFalse(receipt["physicalWriteAuthorized"])
+            self.assertFalse(receipt["physicalUsbBootVerified"])
+
+    def test_cross_profile_digest_mismatch_fails(self):
+        self.native["media"]["distroProfile"] = evidence.PROFILE_3241
+        self.write_native()
+        with self.assertRaisesRegex(ValueError, "publisher-pinned"):
+            self.generate(profile=evidence.PROFILE_3241)
+
+    def test_unknown_profile_is_rejected_before_any_receipt(self):
+        with self.assertRaisesRegex(ValueError, "unlisted"):
+            self.generate(profile="alpine-standard-any")
+        self.assertFalse((self.path / "alpine-boot-evidence.json").exists())
 
     def test_wrong_or_missing_git_revision_rejected(self):
         with self.assertRaisesRegex(ValueError, "commit identity"):

@@ -17,6 +17,17 @@ import subprocess
 PROFILE = "alpine-virt-3.24.2-x86_64"
 EXPECTED_SHA256 = "3ab424762af704b2c2a9e57df1dc37f982af260071504d977f2fb96822e7130b"
 EXPECTED_BYTES = 69_206_016
+PROFILE_3241 = "alpine-virt-3.24.1-x86_64"
+EXPECTED_SHA256_3241 = "e73a6241bd5f3c5c2d4d38c02cc52c378c0415a7c888bd292066bf36e0f41a39"
+EXPECTED_BYTES_3241 = 69_206_016
+
+
+def pinned_profile(name: str) -> tuple[str, int]:
+    if name == PROFILE:
+        return EXPECTED_SHA256, EXPECTED_BYTES
+    if name == PROFILE_3241:
+        return EXPECTED_SHA256_3241, EXPECTED_BYTES_3241
+    raise ValueError("unlisted Alpine profile cannot produce CI boot evidence")
 MAX_SERIAL_BYTES = 4 * 1024 * 1024
 LOGIN_PROMPT = re.compile(rb"(?:alpine|localhost)[ \t]+login:", re.IGNORECASE)
 
@@ -33,7 +44,8 @@ def sha256_regular_file(path: Path, expected_size: int | None = None) -> str:
     return hasher.hexdigest()
 
 
-def validate_native_report(report: dict, exported: Path) -> None:
+def validate_native_report(report: dict, exported: Path, profile: str = PROFILE) -> None:
+    expected_sha256, expected_bytes = pinned_profile(profile)
     if type(report) is not dict or type(report.get("media")) is not dict:
         raise ValueError("native report or media envelope absent")
     media = report["media"]
@@ -46,12 +58,12 @@ def validate_native_report(report: dict, exported: Path) -> None:
             or media.get("linuxDistributionBootVerified") is not False
             or not all(media.get(key) is True for key in required_true)):
         raise ValueError("native report claimed physical authority/boot success or missed a gate")
-    if (media.get("distroProfile") != PROFILE
+    if (media.get("distroProfile") != profile
             or type(media.get("imageBytes")) is not int
-            or media["imageBytes"] != EXPECTED_BYTES
-            or media.get("sourceSha256") != EXPECTED_SHA256
-            or media.get("copiedSha256") != EXPECTED_SHA256
-            or report.get("outputSha256") != EXPECTED_SHA256
+            or media["imageBytes"] != expected_bytes
+            or media.get("sourceSha256") != expected_sha256
+            or media.get("copiedSha256") != expected_sha256
+            or report.get("outputSha256") != expected_sha256
             or report.get("outputPath") != str(exported)):
         raise ValueError("native report does not match exact publisher-pinned image")
 
@@ -62,13 +74,14 @@ def serial_login_verified(data: bytes) -> bool:
 
 
 def produce_evidence(report_path: Path, serial_path: Path, firmware: Path,
-                     output_directory: Path, revision: str) -> dict:
+                     output_directory: Path, revision: str, profile: str = PROFILE) -> dict:
+    expected_sha256, expected_bytes = pinned_profile(profile)
     if report_path.is_symlink() or not report_path.is_file():
         raise ValueError("native report is not a regular file")
     report = json.loads(report_path.read_text(encoding="utf-8"))
     exported = Path(report.get("outputPath", ""))
-    validate_native_report(report, exported)
-    if sha256_regular_file(exported, EXPECTED_BYTES) != EXPECTED_SHA256:
+    validate_native_report(report, exported, profile)
+    if sha256_regular_file(exported, expected_bytes) != expected_sha256:
         raise ValueError("exported image changed after QEMU boot or hash mismatch")
     if serial_path.is_symlink() or not serial_path.is_file():
         raise ValueError("missing serial log from real QEMU execution")
@@ -90,10 +103,10 @@ def produce_evidence(report_path: Path, serial_path: Path, firmware: Path,
         "schemaVersion": 1,
         "verificationClass": "ci-virtual-boot-observation",
         "sourceRevision": revision,
-        "profile": PROFILE,
-        "imageBytes": EXPECTED_BYTES,
-        "sourceSha256": EXPECTED_SHA256,
-        "outputSha256": EXPECTED_SHA256,
+        "profile": profile,
+        "imageBytes": expected_bytes,
+        "sourceSha256": expected_sha256,
+        "outputSha256": expected_sha256,
         "readbackVerified": True,
         "firmware": "OVMF",
         "firmwareSha256": firmware_digest,
@@ -129,9 +142,10 @@ def main() -> None:
     parser.add_argument("--firmware", type=Path, required=True)
     parser.add_argument("--evidence-dir", type=Path, required=True)
     parser.add_argument("--revision", required=True)
+    parser.add_argument("--profile", required=True, choices=(PROFILE, PROFILE_3241))
     args = parser.parse_args()
     evidence = produce_evidence(args.report, args.serial, args.firmware,
-                                args.evidence_dir, args.revision)
+                                args.evidence_dir, args.revision, args.profile)
     print(f"PASS: CI-only QEMU/OVMF Linux login evidence: {evidence['profile']}")
 
 

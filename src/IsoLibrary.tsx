@@ -82,11 +82,11 @@ export function IsoLibrary() {
             <div><span>Virtual EFI conversion</span><strong data-testid="iso-virtual-eligible">{knownLinux ? 'Verified virtual profile (CLI only)' : virtualPlan?.virtualEfiEligible ? 'Developer-only candidate' : 'Disabled / unsupported'}</strong></div>
             <div><span>Files inspected</span><strong>{knownLinux ? 'Not extracted (raw ISO)' : virtualPlan?.fileCount ?? '—'}</strong></div>
             <div><span>Recognised file bytes</span><strong>{knownLinux ? sizeLabel(knownLinux.imageBytes) : virtualPlan ? sizeLabel(virtualPlan.totalBytes) : '—'}</strong></div>
-            <div><span>OS boot evidence</span><strong>{knownLinux ? 'Alpine QEMU login verified (exact ISO only)' : 'Not verified'}</strong></div>
+            <div><span>OS boot evidence</span><strong>{knownLinux ? 'QEMU Linux login (pinned ISO only)' : 'Not verified'}</strong></div>
             <div><span>Physical USB write authorisation</span><strong>No</strong></div>
           </div>
           {knownLinux && <p className="notice" role="status" data-testid="iso-verified-linux-profile">
-            Exact publisher-pinned SHA-256 matches Alpine virt 3.24.2 x86_64. Its virtual-disk copy has been verified to boot to Linux login in QEMU/OVMF. Physical USB boot, installation and other Alpine releases are not qualified. Use the developer CLI for virtual copying; this page never writes a disk.
+            Exact publisher-pinned SHA-256 matches {knownLinux.profile}. Its exact-version virtual-disk copy is qualified through the QEMU/OVMF Linux-login CI gate. Physical USB boot, installation and other Alpine images are not qualified. Use the developer CLI for virtual copying; this page never writes a disk.
           </p>}
           {!knownLinux && virtualPlan && <p className="notice" role="status">{virtualPlan.reason}</p>}
           {virtualPlanError && !knownLinux && <p className="helper" data-testid="iso-plan-error">Unsupported or invalid directory structure: {virtualPlanError}</p>}

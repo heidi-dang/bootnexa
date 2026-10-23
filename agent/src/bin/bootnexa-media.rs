@@ -28,7 +28,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             println!("{}",serde_json::to_string(&report)?);
         }
         [op, source, output_dir] if op == "build-alpine-virtual" => {
-            // Only the pinned official Alpine virt 3.24.2 x86_64 release.
+            // Only the two independently pinned official Alpine virt 3.24.1/3.24.2 x86_64 releases.
             // Exactly-zero physical write authority, file output only.
             let mut input=File::open(source)?;
             if !input.metadata()?.is_file() {
@@ -155,7 +155,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 "outputSha256":digest,"media":report
             }));
         }
-        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | plan-iso <ISO> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-alpine-virtual <verified-Alpine-virt-3.24.2-x86_64.iso> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
+        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | plan-iso <ISO> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-alpine-virtual <verified-Alpine-virt-3.24.1-or-3.24.2-x86_64.iso> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
     }
     Ok(())
 }

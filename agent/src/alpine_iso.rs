@@ -14,13 +14,42 @@ pub const VERIFIED_ALPINE_VERSION: &str = "alpine-virt-3.24.2-x86_64";
 pub const VERIFIED_SHA256: &str =
     "3ab424762af704b2c2a9e57df1dc37f982af260071504d977f2fb96822e7130b";
 const VERIFIED_SIZE: u64 = 69_206_016;
+pub const VERIFIED_ALPINE_3241_VERSION: &str = "alpine-virt-3.24.1-x86_64";
+pub const VERIFIED_ALPINE_3241_SHA256: &str =
+    "e73a6241bd5f3c5c2d4d38c02cc52c378c0415a7c888bd292066bf36e0f41a39";
+const VERIFIED_ALPINE_3241_SIZE: u64 = 69_206_016;
+
+#[derive(Clone, Copy)]
+struct VerifiedProfile {
+    name: &'static str,
+    sha256: &'static str,
+    image_bytes: u64,
+}
+const VERIFIED_PROFILES: [VerifiedProfile; 2] = [
+    VerifiedProfile {
+        name: VERIFIED_ALPINE_VERSION,
+        sha256: VERIFIED_SHA256,
+        image_bytes: VERIFIED_SIZE,
+    },
+    VerifiedProfile {
+        name: VERIFIED_ALPINE_3241_VERSION,
+        sha256: VERIFIED_ALPINE_3241_SHA256,
+        image_bytes: VERIFIED_ALPINE_3241_SIZE,
+    },
+];
+fn select_profile(image_bytes: u64, sha256: &str) -> Option<VerifiedProfile> {
+    VERIFIED_PROFILES
+        .iter()
+        .copied()
+        .find(|candidate| candidate.image_bytes == image_bytes && candidate.sha256 == sha256)
+}
 const MAX_EFI: u64 = 8 * 1024 * 1024;
 const CHUNK: usize = 64 * 1024;
 
 #[derive(Debug, Error)]
 pub enum LinuxIsoError {
     #[error(
-        "only the checksum-pinned official Alpine Linux 3.24.2 virtual ISO is currently eligible"
+        "only explicitly SHA-256-pinned Alpine Linux virt 3.24.1/3.24.2 x86_64 ISOs are currently eligible"
     )]
     Unsupported,
     #[error("official ISO or copied virtual-image digest mismatch")]
@@ -105,11 +134,11 @@ fn hash(file: &mut File) -> Result<String, std::io::Error> {
     }
     Ok(hex::encode(sha.finalize()))
 }
-fn qualify(file: &mut File) -> Result<(u64, u64), LinuxIsoError> {
-    if !file.metadata()?.is_file() || file.metadata()?.len() != VERIFIED_SIZE {
+fn qualify(file: &mut File, image_bytes: u64) -> Result<(u64, u64), LinuxIsoError> {
+    if !file.metadata()?.is_file() || file.metadata()?.len() != image_bytes {
         return Err(LinuxIsoError::Unsupported);
     }
-    let iso = inspect(file, VERIFIED_SIZE)?;
+    let iso = inspect(file, image_bytes)?;
     if !iso.iso9660 || !iso.hybrid_mbr_candidate || !iso.el_torito || !iso.uefi_catalog_entry {
         return Err(LinuxIsoError::Layout);
     }
@@ -134,7 +163,7 @@ fn qualify(file: &mut File) -> Result<(u64, u64), LinuxIsoError> {
         let bytes = sectors.checked_mul(512).ok_or(LinuxIsoError::Layout)?;
         if start == 0
             || bytes < 512 * 64
-            || offset.checked_add(bytes).is_none_or(|n| n > VERIFIED_SIZE)
+            || offset.checked_add(bytes).is_none_or(|n| n > image_bytes)
         {
             return Err(LinuxIsoError::Layout);
         }
@@ -171,20 +200,25 @@ fn qualify(file: &mut File) -> Result<(u64, u64), LinuxIsoError> {
 pub struct VerifiedAlpineVirtual {
     file: File,
     report: LinuxIsoReport,
+    image_bytes: u64,
 }
 impl VerifiedAlpineVirtual {
     pub fn from_verified_iso(src: &mut File) -> Result<Self, LinuxIsoError> {
-        if !src.metadata()?.is_file() || src.metadata()?.len() != VERIFIED_SIZE {
+        let metadata = src.metadata()?;
+        if !metadata.is_file()
+            || !VERIFIED_PROFILES
+                .iter()
+                .any(|p| p.image_bytes == metadata.len())
+        {
             return Err(LinuxIsoError::Unsupported);
         }
         let source_hash = hash(src)?;
-        if source_hash != VERIFIED_SHA256 {
-            return Err(LinuxIsoError::Verification);
-        }
-        let (offset, len) = qualify(src)?;
+        let profile =
+            select_profile(metadata.len(), &source_hash).ok_or(LinuxIsoError::Verification)?;
+        let (offset, len) = qualify(src, profile.image_bytes)?;
         src.rewind()?;
         let mut file = tempfile::tempfile()?;
-        let mut left = VERIFIED_SIZE;
+        let mut left = profile.image_bytes;
         let mut buf = [0u8; CHUNK];
         let mut sha = Sha256::new();
         while left > 0 {
@@ -199,7 +233,7 @@ impl VerifiedAlpineVirtual {
         if copy_hash != source_hash || hash(src)? != source_hash || hash(&mut file)? != copy_hash {
             return Err(LinuxIsoError::Verification);
         }
-        let (copy_offset, copy_len) = qualify(&mut file)?;
+        let (copy_offset, copy_len) = qualify(&mut file, profile.image_bytes)?;
         if (copy_offset, copy_len) != (offset, len) {
             return Err(LinuxIsoError::Verification);
         }
@@ -208,18 +242,19 @@ impl VerifiedAlpineVirtual {
             report: LinuxIsoReport {
                 virtual_only: true,
                 physical_write_authorized: false,
-                distro_profile: VERIFIED_ALPINE_VERSION.into(),
+                distro_profile: profile.name.into(),
                 linux_distribution_boot_verified: false,
                 boot_execution_verified: false,
                 publisher_sha256_matched: true,
                 mbr_efi_partition_verified: true,
                 fat_efi_bootloader_verified: true,
-                image_bytes: VERIFIED_SIZE,
+                image_bytes: profile.image_bytes,
                 source_sha256: source_hash,
                 copied_sha256: copy_hash,
                 esp_offset: offset,
                 esp_bytes: len,
             },
+            image_bytes: profile.image_bytes,
         })
     }
     pub fn report(&self) -> &LinuxIsoReport {
@@ -230,7 +265,7 @@ impl VerifiedAlpineVirtual {
             return Err(LinuxIsoError::Unsupported);
         }
         self.file.rewind()?;
-        let mut left = VERIFIED_SIZE;
+        let mut left = self.image_bytes;
         let mut buf = [0u8; CHUNK];
         while left > 0 {
             let n = left.min(CHUNK as u64) as usize;
@@ -240,7 +275,7 @@ impl VerifiedAlpineVirtual {
         }
         dst.sync_all()?;
         let output_hash = hash(dst)?;
-        if output_hash != self.report.source_sha256 || dst.metadata()?.len() != VERIFIED_SIZE {
+        if output_hash != self.report.source_sha256 || dst.metadata()?.len() != self.image_bytes {
             return Err(LinuxIsoError::Verification);
         }
         Ok(output_hash)
@@ -255,6 +290,16 @@ mod tests {
         file.set_len(VERIFIED_SIZE).unwrap();
         assert!(VerifiedAlpineVirtual::from_verified_iso(&mut file).is_err());
         assert!(!VERIFIED_SHA256.is_empty());
+    }
+    #[test]
+    fn only_exact_publisher_hash_and_size_pairs_are_eligible() {
+        let older = select_profile(VERIFIED_ALPINE_3241_SIZE, VERIFIED_ALPINE_3241_SHA256).unwrap();
+        assert_eq!(older.name, VERIFIED_ALPINE_3241_VERSION);
+        let newer = select_profile(VERIFIED_SIZE, VERIFIED_SHA256).unwrap();
+        assert_eq!(newer.name, VERIFIED_ALPINE_VERSION);
+        assert!(select_profile(VERIFIED_SIZE + 1, VERIFIED_SHA256).is_none());
+        assert!(select_profile(VERIFIED_SIZE, &"0".repeat(64)).is_none());
+        assert!(select_profile(VERIFIED_SIZE, &VERIFIED_SHA256.to_uppercase()).is_none());
     }
     #[test]
     fn partition_view_rejects_writes_and_oob_seeks() {
