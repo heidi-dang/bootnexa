@@ -79,6 +79,12 @@ export function IsoLibrary() {
             <p>Bounded read-only directory traversal; preparation is not a supported disk-writing operation.</p></div></div>
           <div className="summary-data">
             <div><span>Detected media profile</span><strong data-testid="iso-profile">{knownLinux?.profile ?? virtualPlan?.profile ?? 'Not qualified'}</strong></div>
+            {virtualPlan?.profile === 'windows_install_candidate' && <>
+              <div><span>Windows installation payload</span><strong data-testid="windows-install-payload">{virtualPlan.windowsInstallPayload === 'missing' ? 'Missing or ambiguous' : virtualPlan.windowsInstallPayload ?? 'Not detected'}</strong></div>
+              <div><span>Installation payload bytes (ISO9660 view)</span><strong>{virtualPlan.windowsPayloadBytes === null ? 'Not available' : sizeLabel(virtualPlan.windowsPayloadBytes)}</strong></div>
+              <div><span>UDF signature</span><strong>{virtualPlan.windowsUdfSignatureObserved ? 'Observed — requires separate parser' : 'Not observed (not a UDF guarantee)'}</strong></div>
+              <div><span>Windows Setup boot tested</span><strong>No</strong></div>
+            </>}
             <div><span>Virtual EFI conversion</span><strong data-testid="iso-virtual-eligible">{knownLinux ? 'Verified virtual profile (CLI only)' : virtualPlan?.virtualEfiEligible ? 'Developer-only candidate' : 'Disabled / unsupported'}</strong></div>
             <div><span>Files inspected</span><strong>{knownLinux ? 'Not extracted (raw ISO)' : virtualPlan?.fileCount ?? '—'}</strong></div>
             <div><span>Recognised file bytes</span><strong>{knownLinux ? sizeLabel(knownLinux.imageBytes) : virtualPlan ? sizeLabel(virtualPlan.totalBytes) : '—'}</strong></div>
@@ -94,7 +100,7 @@ export function IsoLibrary() {
             <strong>Recognised files (first {virtualPlan.samplePaths.length})</strong>
             <ul data-testid="iso-files">{virtualPlan.samplePaths.map(path=><li key={path}><code>{path}</code></li>)}</ul>
           </div>}
-          <p className="helper">Production Windows/Linux ISO conversion, installer boot, WIM splitting and physical USB creation remain disabled. Qualified virtual copying is available only in the developer CLI.</p>
+          <p className="helper">Windows ISO metadata preflight and bit-exact virtual CD-ROM staging are developer CLI only and require native validation. Windows Setup boot, WIM splitting, UDF installer extraction, production USB creation and physical writing remain disabled.</p>
         </section>
       </div>
       <div className="work-side">

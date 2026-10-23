@@ -189,6 +189,8 @@ Treat a layout plan as untrusted until recomputed and signed by the local agent;
 
 ## Phase 8 — Windows install media and customisation
 
+**Current implementation increment:** Read-only Windows ISO9660 metadata traversal with large-file extent bounds, outer WIM/ESD header preflight, x64 EFI header and catalog checks, UDF-recognition refusal, and developer-only bit-exact virtual **CD-ROM ISO** staging with independent whole-file SHA-256 read-back. Synthetic adversarial and browser tests exist. **Not yet implemented:** full UDF/WIM parsing, actual GPT/FAT32+NTFS USB disk builder, install.wim splitting, or a booted genuine Windows Setup environment; physical writing remains disabled. See [Phase 8 detailed qualification](WINDOWS-ISO-VIRTUAL-PREFLIGHT.md).
+
 **Work:** Add Windows ISO acquisition through official, license-compliant sources; WIM/ESD metadata and multiple-image indexes via `wimlib` or equivalent; split `install.wim` where needed. Create Windows installation customisation workflow: local account settings, region/time, privacy, hardware-check options, and installer compatibility constraints.
 
 **Important:** Document OS build applicability, Microsoft licensing, enterprise requirements and the risk of unsupported upgrade/bypass features. Treat TPM/Secure Boot/RAM setup-check modification as an opt-in *installer customisation*, never an assurance of hardware compatibility, support, updates or licensing. Never distribute Microsoft binaries in BootNexa.

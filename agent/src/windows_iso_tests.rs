@@ -1,0 +1,55 @@
+#[cfg(test)]
+mod tests {
+    use super::super::*;
+    use std::io::Cursor;
+
+    fn wim_fixture() -> Vec<u8> {
+        let mut bytes = vec![0u8; WIM_HEADER_BYTES];
+        bytes[..8].copy_from_slice(b"MSWIM\0\0\0");
+        bytes[8..12].copy_from_slice(&(208u32).to_le_bytes());
+        bytes[12..16].copy_from_slice(&(0x10d00u32).to_le_bytes());
+        bytes[40..42].copy_from_slice(&(1u16).to_le_bytes());
+        bytes[42..44].copy_from_slice(&(1u16).to_le_bytes());
+        bytes[44..48].copy_from_slice(&(2u32).to_le_bytes());
+        bytes
+    }
+    fn entry(bytes: &[u8]) -> IsoFile {
+        IsoFile {
+            path: "SOURCES/BOOT.WIM".to_string(),
+            offset: 0,
+            length: bytes.len() as u64,
+        }
+    }
+    #[test]
+    fn windows_wim_headers_only_validate_structure_not_installer_execution() {
+        let bytes = wim_fixture();
+        let header = parse_wim(&mut Cursor::new(&bytes), &entry(&bytes)).unwrap();
+        assert_eq!(header.image_count, 2);
+        assert_eq!(header.file_bytes, WIM_HEADER_BYTES as u64);
+        assert_eq!(header.part_number, 1);
+        assert_eq!(header.total_parts, 1);
+    }
+    #[test]
+    fn windows_wim_header_fails_closed_on_malformed_or_spanned_headers() {
+        for pos in [0, 8, 12, 40, 42, 44] {
+            let mut bytes = wim_fixture();
+            bytes[pos] = if pos == 44 { 0 } else { 0xff };
+            assert!(
+                parse_wim(&mut Cursor::new(&bytes), &entry(&bytes)).is_err(),
+                "malformed byte at {pos} must fail"
+            );
+        }
+        let bytes = vec![0u8; 160];
+        assert!(parse_wim(&mut Cursor::new(&bytes), &entry(&bytes)).is_err());
+    }
+    #[test]
+    fn rejects_untrusted_efi_and_reports_no_boot_success() {
+        let bytes = vec![0u8; 512];
+        let efi = IsoFile {
+            path: "EFI/BOOT/BOOTX64.EFI".into(),
+            offset: 0,
+            length: bytes.len() as u64,
+        };
+        assert!(!check_efi_x64(&mut Cursor::new(bytes), &efi).unwrap());
+    }
+}
