@@ -14,6 +14,14 @@ The operation uses an installed and administrator-provisioned `wimlib-imagex` ve
 
 The JSON receipt explicitly marks `virtualOnly: true`, `physicalWriteAuthorized: false`, `installerCompatibleVerified: false` and `windowsSetupBootVerified: false`. This command **does not** create, modify, format, partition or select a physical drive. The output is a folder of SWM regular files, not a Windows USB installer or QEMU bootable medium. The external wimlib binary must come from a trusted installation; Bootnexa currently lacks its own signed runtime broker for that dependency.
 
+## Synthetic end-to-end GPT/FAT32 assembly
+
+The follow-on `build-windows-swm-demo <synthetic-source-root> <verified-swm-directory> <existing-output-directory>` developer CLI is intentionally limited to a **192 MiB anonymous GPT/FAT32 regular-file disk**. It requires fixed input files `EFI/BOOT/BOOTX64.EFI`, `SOURCES/BOOT.WIM` and `SETUP.EXE`, along with a previously split `install.swm`, `install2.swm`, ... set. It re-verifies the BOOT.WIM with wimlib and re-verifies the complete SWM set *before copying*, and it refuses missing, aliased or corrupted metadata.
+
+The assembly caps each input at 48 MiB, aggregate payload at 80 MiB, SWM parts at 16, and validates EFI x64 PE/COFF *structure* before accepting the result. Every file is compared across source-before, staged-copy, source-after and independently read-back FAT32 SHA-256. The GPT primary/backup header evidence and the full exported regular `.img` SHA-256 are verified again. Invalid inputs refuse image creation. All file writing occurs in anonymous virtual disk storage and a new randomly named regular output file.
+
+An integration fixture uses wimlib to produce real format-valid WIM and split SWM parts from pseudo-random, non-Microsoft content; combines them with synthetic x64 EFI and `SETUP.EXE` placeholder bytes; verifies the disk image and unchanged original sources; then tests corrupted SWM, malformed EFI and symlinked source-root refusal. **The contents are deliberately not a bootable Windows installer.** This does not extend the virtual disk limit to multiple GiB nor qualify FAT32+NTFS, Secure Boot or TPM handling.
+
 ## Automated proof
 
 The CI suite generates 14 pseudo-random synthetic files without Microsoft binaries, captures them into a **real standards-compliant WIM using wimlib**, and invokes the new CLI to split them into multiple SWM parts. It independently reruns the verifier, hashes all parts, checks the source before/after SHA, and rejects a malformed WIM, invalid part-size arguments, symlink input/output and unexpected output directories. This is real WIM and SWM **format qualification**, not Microsoft Windows Setup boot evidence.
@@ -32,8 +40,8 @@ Previous stages independently verified a synthetic multi-extent UDF source into 
 
 | Gate | Status |
 | --- | --- |
-| Format-valid synthetic WIM/SWM verifier and SHA receipts | Passed locally, CI required |
-| Restricted synthetic UDF to 96 MiB GPT/FAT32 artifact | CI-qualified in PR #32 |
+| Format-valid synthetic WIM/SWM verifier and SHA receipts | CI green on PR #33; integration PR separate |
+| Restricted synthetic UDF to 96 MiB GPT/FAT32 artifact | CI-qualified in PR #32 |\n| Valid synthetic WIM/SWM set staged into verified 192 MiB virtual GPT/FAT32 | New integration, CI qualification required |
 | More-than-4GiB real official WIM split and FAT32 staging | Not tested |
 | Genuine Windows 11 Setup guest boot | Not tested — official media unavailable |
 | Secure Boot and physical USB writes | Disabled and unqualified |

@@ -147,6 +147,46 @@ fn verify_parts(dir: &Path) -> Result<Vec<SplitPart>, SwmError> {
     }
     Ok(result)
 }
+/// Re-verify an already-produced split archive before it is consumed by
+/// an anonymous virtual-media writer. Never trusts filenames alone.
+pub fn verify_existing_split(dir: &Path) -> Result<Vec<SplitPart>, SwmError> {
+    if !fs::symlink_metadata(dir)?.file_type().is_dir() {
+        return Err(SwmError::Invalid);
+    }
+    let parts = verify_parts(dir)?;
+    let first = dir.join("install.swm");
+    let references = format!("--ref={}", dir.join("install*.swm").display());
+    invoke(&[
+        std::ffi::OsStr::new("verify"),
+        first.as_os_str(),
+        std::ffi::OsStr::new(&references),
+    ])?;
+    let after = verify_parts(dir)?;
+    if parts.len() != after.len()
+        || parts
+            .iter()
+            .zip(&after)
+            .any(|(a, b)| a.filename != b.filename || a.bytes != b.bytes || a.sha256 != b.sha256)
+    {
+        return Err(SwmError::Verification);
+    }
+    Ok(parts)
+}
+
+/// Validate a read-only WIM with wimlib's resource verification engine.
+pub fn verify_existing_wim(source: &Path, max_bytes: u64) -> Result<SplitPart, SwmError> {
+    let (bytes, before) = hash_file(source, max_bytes.min(MAX_SOURCE))?;
+    invoke(&[std::ffi::OsStr::new("verify"), source.as_os_str()])?;
+    if hash_file(source, max_bytes.min(MAX_SOURCE))? != (bytes, before.clone()) {
+        return Err(SwmError::Verification);
+    }
+    Ok(SplitPart {
+        filename: "boot.wim".into(),
+        bytes,
+        sha256: before,
+    })
+}
+
 /// Run a qualified WIM parser and split into FAT32-bounded SWMs.
 pub fn qualify_split(
     source: &Path,
