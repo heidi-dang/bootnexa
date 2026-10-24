@@ -84,7 +84,8 @@ class SetupGateTest(unittest.TestCase):
             nodes=[]
             for i,argument in enumerate(command):
                 if argument=="-blockdev":
-                    nodes.append(json.loads(command[i+1].removeprefix("json:")))
+                    self.assertTrue(command[i+1].startswith("{"))
+                    nodes.append(json.loads(command[i+1]))
             self.assertEqual(nodes[0]["filename"],str(tricky))
             self.assertTrue(all(node["read-only"] for node in nodes))
             self.assertEqual(nodes[1]["driver"],"raw")
