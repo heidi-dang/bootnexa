@@ -41,6 +41,7 @@ pub struct LargePlan {
     pub esp_fat32_verified: bool,
     pub primary_and_backup_gpt_verified: bool,
     pub reserved_payload_sampled_zero: bool,
+    pub payload_fat32_verified: bool,
     pub disk_bytes: u64,
     pub esp_first_lba: u64,
     pub esp_last_lba: u64,
@@ -49,6 +50,55 @@ pub struct LargePlan {
     pub reserved_payload_last_lba: u64,
     pub reserved_payload_bytes: u64,
     pub metadata_sha256: String,
+}
+/// The only staged payload is a fixed EFI loader test path in a private
+/// anonymous FAT32 partition. A structurally valid PE header is NOT trust.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LargeEfiReceipt {
+    pub layout: LargePlan,
+    pub virtual_only: bool,
+    pub physical_write_authorized: bool,
+    pub windows_setup_boot_verified: bool,
+    pub efi_structure_verified: bool,
+    pub efi_executability_verified: bool,
+    pub efi_source_bytes: u64,
+    pub efi_source_sha256: String,
+    pub efi_fat32_readback_sha256: String,
+    pub efi_source_unchanged: bool,
+}
+const MAX_EFI_BYTES: usize = 8 * 1024 * 1024;
+fn read_source_efi(source: &std::path::Path) -> Result<Vec<u8>, MediaError> {
+    // Only a read-only, regular local file; no source device handles or links.
+    if !std::fs::symlink_metadata(source)?.file_type().is_file() {
+        return Err(MediaError::Corrupt);
+    }
+    let file = File::open(source)?;
+    let length = file.metadata()?.len();
+    if !(256..=MAX_EFI_BYTES as u64).contains(&length) {
+        return Err(MediaError::Capacity);
+    }
+    let mut data = Vec::with_capacity(length as usize);
+    file.take(MAX_EFI_BYTES as u64 + 1).read_to_end(&mut data)?;
+    if data.len() != length as usize {
+        return Err(MediaError::Corrupt);
+    }
+    Ok(data)
+}
+fn ensure_x64_efi_header(data: &[u8]) -> Result<(), MediaError> {
+    if data.len() < 0x100 || &data[..2] != b"MZ" {
+        return Err(MediaError::Corrupt);
+    }
+    let pe = u32::from_le_bytes(data[0x3c..0x40].try_into().unwrap()) as usize;
+    if pe.checked_add(0x60).is_none_or(|end| end > data.len())
+        || &data[pe..pe + 4] != b"PE\0\0"
+        || data[pe + 4..pe + 6] != [0x64, 0x86]
+        || data[pe + 24..pe + 26] != [0x0b, 0x02]
+        || data[pe + 24 + 68..pe + 24 + 70] != [10, 0]
+    {
+        return Err(MediaError::Corrupt);
+    }
+    Ok(())
 }
 #[derive(Clone, Copy, Debug)]
 struct Bounds {
@@ -330,9 +380,26 @@ impl Seek for Region<'_> {
         self.seek_to(next as u64)
     }
 }
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PayloadStageReport {
+    pub virtual_only: bool,
+    pub physical_write_authorized: bool,
+    pub windows_setup_boot_verified: bool,
+    pub installer_compatible_verified: bool,
+    pub full_disk_sha256_verified: bool,
+    pub payload_fat32_verified: bool,
+    pub source_bytes: u64,
+    pub source_sha256: String,
+    pub fat32_readback_sha256: String,
+    pub source_after_sha256: String,
+    pub staged_path: &'static str,
+    pub primary_and_backup_gpt_verified: bool,
+}
 pub struct LargeSparseDisk {
     file: File,
     b: Bounds,
+    payload_fat32: bool,
 }
 impl LargeSparseDisk {
     pub fn new(gib: u32) -> Result<Self, MediaError> {
@@ -368,22 +435,128 @@ impl LargeSparseDisk {
             )?;
         }
         file.sync_all()?;
-        let mut disk = Self { file, b };
+        let mut disk = Self {
+            file,
+            b,
+            payload_fat32: false,
+        };
         disk.verify()?;
         Ok(disk)
+    }
+    /// Stream a locally supplied, format-valid synthetic EFI file into the
+    /// anonymous FAT32 ESP and independently read it back. Source unchanged,
+    /// GPT intact, reserved payload still unformatted. No boot claim.
+    pub fn stage_efi_test(
+        &mut self,
+        source: &std::path::Path,
+    ) -> Result<LargeEfiReceipt, MediaError> {
+        let original = read_source_efi(source)?;
+        ensure_x64_efi_header(&original)?;
+        let original_sha = hex::encode(Sha256::digest(&original));
+        {
+            let view = Region {
+                file: &mut self.file,
+                base: self.b.esp_first * SECTOR,
+                length: ESP_BYTES,
+                pos: 0,
+            };
+            let fs = FileSystem::new(view, FsOptions::new())?;
+            if fs.fat_type() != FatType::Fat32 {
+                return Err(MediaError::Corrupt);
+            }
+            let root = fs.root_dir();
+            let efi = root.create_dir("EFI")?;
+            let boot = efi.create_dir("BOOT")?;
+            let mut output = boot.create_file("BOOTX64.EFI")?;
+            let mut sha = Sha256::new();
+            for chunk in original.chunks(64 * 1024) {
+                output.write_all(chunk)?;
+                sha.update(chunk);
+            }
+            output.flush()?;
+            if hex::encode(sha.finalize()) != original_sha {
+                return Err(MediaError::Corrupt);
+            }
+            drop(output);
+            drop(boot);
+            drop(efi);
+            drop(root);
+            fs.unmount()?;
+        }
+        self.file.sync_all()?;
+        let copy_sha = {
+            let view = Region {
+                file: &mut self.file,
+                base: self.b.esp_first * SECTOR,
+                length: ESP_BYTES,
+                pos: 0,
+            };
+            let fs = FileSystem::new(view, FsOptions::new())?;
+            let root = fs.root_dir();
+            let mut file = root.open_file("EFI/BOOT/BOOTX64.EFI")?;
+            let mut hasher = Sha256::new();
+            let mut bytes = 0u64;
+            let mut buffer = [0u8; 65536];
+            loop {
+                let n = file.read(&mut buffer)?;
+                if n == 0 {
+                    break;
+                }
+                bytes += n as u64;
+                if bytes > MAX_EFI_BYTES as u64 {
+                    return Err(MediaError::Corrupt);
+                }
+                hasher.update(&buffer[..n]);
+            }
+            if bytes != original.len() as u64 {
+                return Err(MediaError::Corrupt);
+            }
+            hex::encode(hasher.finalize())
+        };
+        let source_after = read_source_efi(source)?;
+        if source_after != original || copy_sha != original_sha {
+            return Err(MediaError::Corrupt);
+        }
+        let layout = self.verify()?;
+        Ok(LargeEfiReceipt {
+            layout,
+            virtual_only: true,
+            physical_write_authorized: false,
+            windows_setup_boot_verified: false,
+            efi_structure_verified: true,
+            efi_executability_verified: false,
+            efi_source_bytes: original.len() as u64,
+            efi_source_sha256: original_sha,
+            efi_fat32_readback_sha256: copy_sha,
+            efi_source_unchanged: true,
+        })
     }
     pub fn verify(&mut self) -> Result<LargePlan, MediaError> {
         let metadata_sha256 = verify_gpt(&mut self.file, self.b)?;
         // Explicitly check three bounded sentinel sectors, not the complete
         // reserved filesystem. This is not a full-disk integrity assertion.
-        for lba in [
-            self.b.data_first,
-            self.b.data_first + (self.b.data_last - self.b.data_first) / 2,
-            self.b.data_last,
-        ] {
-            let mut sample = [0u8; 512];
-            read_bytes(&mut self.file, lba * SECTOR, &mut sample)?;
-            if sample.iter().any(|&value| value != 0) {
+        if !self.payload_fat32 {
+            for lba in [
+                self.b.data_first,
+                self.b.data_first + (self.b.data_last - self.b.data_first) / 2,
+                self.b.data_last,
+            ] {
+                let mut sample = [0u8; 512];
+                read_bytes(&mut self.file, lba * SECTOR, &mut sample)?;
+                if sample.iter().any(|&value| value != 0) {
+                    return Err(MediaError::Corrupt);
+                }
+            }
+        }
+        if self.payload_fat32 {
+            let view = Region {
+                file: &mut self.file,
+                base: self.b.data_first * SECTOR,
+                length: (self.b.data_last - self.b.data_first + 1) * SECTOR,
+                pos: 0,
+            };
+            let fs = FileSystem::new(view, FsOptions::new())?;
+            if fs.fat_type() != FatType::Fat32 {
                 return Err(MediaError::Corrupt);
             }
         }
@@ -405,11 +578,12 @@ impl LargeSparseDisk {
             windows_installer_compatible: false,
             boot_execution_verified: false,
             full_disk_sha256_verified: false,
-            payload_filesystem_formatted: false,
+            payload_filesystem_formatted: self.payload_fat32,
             ntfs_writer_available: false,
             esp_fat32_verified: true,
             primary_and_backup_gpt_verified: true,
-            reserved_payload_sampled_zero: true,
+            reserved_payload_sampled_zero: !self.payload_fat32,
+            payload_fat32_verified: self.payload_fat32,
             disk_bytes: self.b.disk,
             esp_first_lba: self.b.esp_first,
             esp_last_lba: self.b.esp_last,
@@ -420,6 +594,168 @@ impl LargeSparseDisk {
             metadata_sha256,
         })
     }
+    /// Explicit second FAT32 partition in an anonymous Linux-only disk.
+    /// Not NTFS, no automatic installer compatibility or persistence.
+    pub fn format_payload_fat32(&mut self) -> Result<LargePlan, MediaError> {
+        if self.payload_fat32 {
+            return Err(MediaError::Corrupt);
+        }
+        self.verify()?;
+        {
+            let region = Region {
+                file: &mut self.file,
+                base: self.b.data_first * SECTOR,
+                length: (self.b.data_last - self.b.data_first + 1) * SECTOR,
+                pos: 0,
+            };
+            fatfs::format_volume(
+                region,
+                FormatVolumeOptions::new()
+                    .fat_type(FatType::Fat32)
+                    .bytes_per_cluster(8192)
+                    .volume_label(*b"BOOTNEXDATA"),
+            )?;
+        }
+        self.file.sync_all()?;
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::fs::MetadataExt;
+            if self.file.metadata()?.blocks().saturating_mul(512) > 128 * 1024 * 1024 {
+                return Err(MediaError::Capacity);
+            }
+        }
+        self.payload_fat32 = true;
+        self.verify()
+    }
+    /// Stream a single bounded synthetic file into the second FAT32 only,
+    /// rehashing the source and independently reading the FAT32 file.
+    pub fn stage_synthetic_payload(
+        &mut self,
+        source: &mut File,
+        expected_sha256: &str,
+    ) -> Result<PayloadStageReport, MediaError> {
+        const MAX_BYTES: u64 = 32 * 1024 * 1024;
+        if !self.payload_fat32
+            || !source.metadata()?.is_file()
+            || expected_sha256.len() != 64
+            || !expected_sha256.bytes().all(|c| c.is_ascii_hexdigit())
+        {
+            return Err(MediaError::Corrupt);
+        }
+        let count = source.metadata()?.len();
+        if count == 0 || count > MAX_BYTES {
+            return Err(MediaError::Capacity);
+        }
+        fn fingerprint(source: &mut File, size: u64) -> Result<String, MediaError> {
+            source.seek(SeekFrom::Start(0))?;
+            let mut sha = Sha256::new();
+            let mut buffer = [0u8; 65536];
+            let mut left = size;
+            while left > 0 {
+                let n = left.min(buffer.len() as u64) as usize;
+                source.read_exact(&mut buffer[..n])?;
+                sha.update(&buffer[..n]);
+                left -= n as u64;
+            }
+            if source.read(&mut buffer[..1])? != 0 {
+                return Err(MediaError::Corrupt);
+            }
+            Ok(hex::encode(sha.finalize()))
+        }
+        let before = fingerprint(source, count)?;
+        if before != expected_sha256.to_ascii_lowercase() {
+            return Err(MediaError::Corrupt);
+        }
+        let initial_gpt = verify_gpt(&mut self.file, self.b)?;
+        source.seek(SeekFrom::Start(0))?;
+        let copied = {
+            let region = Region {
+                file: &mut self.file,
+                base: self.b.data_first * SECTOR,
+                length: (self.b.data_last - self.b.data_first + 1) * SECTOR,
+                pos: 0,
+            };
+            let fs = FileSystem::new(region, FsOptions::new())?;
+            if fs.fat_type() != FatType::Fat32 {
+                return Err(MediaError::Corrupt);
+            }
+            let root = fs.root_dir();
+            // Never overwrite an existing file in this virtual session.
+            if root.open_file("SOURCES/PAYLOAD.BIN").is_ok() {
+                return Err(MediaError::Corrupt);
+            }
+            root.create_dir("SOURCES")?;
+            let mut dest = root.create_file("SOURCES/PAYLOAD.BIN")?;
+            let mut buf = [0u8; 65536];
+            let mut left = count;
+            let mut sha = Sha256::new();
+            while left > 0 {
+                let n = left.min(buf.len() as u64) as usize;
+                source.read_exact(&mut buf[..n])?;
+                dest.write_all(&buf[..n])?;
+                sha.update(&buf[..n]);
+                left -= n as u64;
+            }
+            if source.read(&mut buf[..1])? != 0 {
+                return Err(MediaError::Corrupt);
+            }
+            dest.flush()?;
+            drop(dest);
+            drop(root);
+            fs.unmount()?;
+            hex::encode(sha.finalize())
+        };
+        if copied != before {
+            return Err(MediaError::Corrupt);
+        }
+        self.file.sync_all()?;
+        let after = fingerprint(source, count)?;
+        if after != before {
+            return Err(MediaError::Corrupt);
+        }
+        let readback = {
+            let region = Region {
+                file: &mut self.file,
+                base: self.b.data_first * SECTOR,
+                length: (self.b.data_last - self.b.data_first + 1) * SECTOR,
+                pos: 0,
+            };
+            let fs = FileSystem::new(region, FsOptions::new())?;
+            let root = fs.root_dir();
+            let mut file = root.open_file("SOURCES/PAYLOAD.BIN")?;
+            let mut sha = Sha256::new();
+            let mut left = count;
+            let mut buf = [0u8; 65536];
+            while left > 0 {
+                let n = left.min(buf.len() as u64) as usize;
+                file.read_exact(&mut buf[..n])?;
+                sha.update(&buf[..n]);
+                left -= n as u64;
+            }
+            if file.read(&mut buf[..1])? != 0 {
+                return Err(MediaError::Corrupt);
+            }
+            hex::encode(sha.finalize())
+        };
+        if readback != before || verify_gpt(&mut self.file, self.b)? != initial_gpt {
+            return Err(MediaError::Corrupt);
+        }
+        let proof = self.verify()?;
+        Ok(PayloadStageReport {
+            virtual_only: true,
+            physical_write_authorized: false,
+            windows_setup_boot_verified: false,
+            installer_compatible_verified: false,
+            full_disk_sha256_verified: false,
+            payload_fat32_verified: proof.payload_fat32_verified,
+            source_bytes: count,
+            source_sha256: before.clone(),
+            fat32_readback_sha256: readback,
+            source_after_sha256: after,
+            staged_path: "SOURCES/PAYLOAD.BIN",
+            primary_and_backup_gpt_verified: proof.primary_and_backup_gpt_verified,
+        })
+    }
     #[cfg(all(test, target_os = "linux"))]
     fn overwrite_at(&mut self, offset: u64, data: &[u8]) -> Result<(), MediaError> {
         write_bytes(&mut self.file, offset, data)
@@ -428,6 +764,54 @@ impl LargeSparseDisk {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn optional_second_fat32_and_independent_payload_sha_roundtrip() {
+        let mut disk = LargeSparseDisk::new(1).unwrap();
+        let before = disk.verify().unwrap().metadata_sha256;
+        assert!(!disk.verify().unwrap().payload_filesystem_formatted);
+        assert!(
+            disk.stage_synthetic_payload(&mut tempfile::tempfile().unwrap(), &"0".repeat(64))
+                .is_err()
+        );
+        let formatted = disk.format_payload_fat32().unwrap();
+        assert!(formatted.payload_fat32_verified && formatted.payload_filesystem_formatted);
+        assert!(!formatted.windows_installer_compatible && !formatted.windows_setup_boot_verified);
+        assert!(!formatted.reserved_payload_sampled_zero);
+        assert_eq!(before, formatted.metadata_sha256);
+        assert!(disk.format_payload_fat32().is_err());
+        let mut file = tempfile::tempfile().unwrap();
+        let data = (0..500_000u32)
+            .flat_map(|n| n.to_le_bytes())
+            .collect::<Vec<_>>();
+        file.write_all(&data).unwrap();
+        let sha = hex::encode(Sha256::digest(&data));
+        assert!(
+            disk.stage_synthetic_payload(&mut file, &"f".repeat(64))
+                .is_err()
+        );
+        let report = disk.stage_synthetic_payload(&mut file, &sha).unwrap();
+        assert_eq!(report.source_sha256, sha);
+        assert_eq!(report.fat32_readback_sha256, sha);
+        assert_eq!(report.source_after_sha256, sha);
+        assert_eq!(report.source_bytes, data.len() as u64);
+        assert!(report.payload_fat32_verified && report.primary_and_backup_gpt_verified);
+        assert!(!report.windows_setup_boot_verified && !report.physical_write_authorized);
+        assert!(disk.stage_synthetic_payload(&mut file, &sha).is_err());
+        assert_eq!(disk.verify().unwrap().metadata_sha256, before);
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn optional_second_fat32_on_eight_gib_stays_sparse() {
+        let mut disk = LargeSparseDisk::new(8).unwrap();
+        let p = disk.format_payload_fat32().unwrap();
+        assert!(p.payload_fat32_verified && p.esp_fat32_verified);
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::fs::MetadataExt;
+            assert!(disk.file.metadata().unwrap().blocks() * 512 < 128 * 1024 * 1024);
+        }
+    }
     #[cfg(target_os = "linux")]
     #[test]
     fn capacity_and_sparse_gpt_esp_contract() {

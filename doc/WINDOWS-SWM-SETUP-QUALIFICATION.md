@@ -46,6 +46,14 @@ The command reports `espFat32Verified=true`, `primaryAndBackupGptVerified=true`,
 
 CI verifies 1, 8 and 24 GiB sparse layouts; adversarial Rust tests modify primary/backup GPT sectors and reserved-payload sentinels, truncate nominal capacity, and attempt out-of-bound partition writes. **Full installer-file streaming into a large disk, a validated NTFS writer, an appropriate FAT32-only Setup layout, and genuine Windows Setup boot are still future milestones.**
 
+## Explicit second FAT32 partition and bounded synthetic staging (not installer media)
+
+The Linux-only large sparse disk now optionally supports `qualify-large-windows-fat32 <1-24-GiB>`, which formats **only the second anonymous partition** as FAT32 (8 KiB clusters) while preserving the 256 MiB EFI FAT32 filesystem, primary/backup GPT validation and bounded partition writes. The earlier `qualify-large-windows-gpt` continues to leave the second partition unformatted by default. **No NTFS filesystem is generated** and no persistent image is exported.
+
+`stage-large-windows-payload-demo <GiB> <regular-source-file> <expected-64-character-sha256>` is a **maximum 32 MiB** synthetic-only input path. It checks source SHA-256 before staging, hashes copied bytes, rehashes source afterward, and independently reads the fixed `SOURCES/PAYLOAD.BIN` path back from the second FAT32 partition. Re-staging an existing file, bad hash, oversized input and symlink input are denied. All virtual disks are anonymous and discarded on process exit. `stage-large-windows-efi-demo <GiB> <regular-structurally-valid-x64-efi-file>` exercises the independent EFI FAT32 partition with pre/post source verification and independent read-back; structural PE validation does not attest code execution or trust.
+
+**Verification limits:** The synthetic demo verifies the copied file, FAT32 structures and GPT metadata only. It does not hash the full multi-GiB disk, decode real Microsoft setup payloads, prove split-WIM source compatibility, provide legitimate Windows Setup or a UEFI boot proof, and does not enable a physical USB writer. The JSON receipts preserve `windowsSetupBootVerified=false`, `physicalWriteAuthorized=false`, and `fullDiskSha256Verified=false`. A two-partition FAT32 disk is **not automatically** a Windows bootable installer.
+
 ## Remaining Windows installer exit gates
 
 1. **Provenance:** obtain an unmodified and appropriately licensed official Microsoft Windows 11 ISO outside the repository, record its publisher-provided digest, language, edition, size and acquisition URL/date. No official Microsoft installer binary may be included in repo fixtures or distributed with this project.
