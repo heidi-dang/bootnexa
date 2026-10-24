@@ -19,6 +19,16 @@ The intake retrieves the exact Microsoft locale row over certificate-validated H
 
 Default limits: ISO length 512 MiB to 24 GiB, at most 4096 files, a 240-byte path budget, 16 path components, individual files up to 16 GiB, and 24 GiB of total listed file bytes. Unsafe traversal paths, symlinks, ambiguous or case-conflicting names, unrecognized ISO formats and unsupported properties fail closed. Legitimate unusual UDF media may fail these conservative checks; do not weaken the gate to force an arbitrary image through.
 
+## Deterministic virtual installer layout feasibility (no disk write)
+
+Once a publisher-checksum-matched ISO manifest has been captured, the read-only layout planner can produce a comprehensive **non-actionable proposal** for a GPT disk of 1–24 GiB. For example:
+
+    python3 tests/virtual-media/windows_installer_layout_plan.py --manifest "$HOME/bootnexa-windows-evidence/<manifest-directory>/manifest.json" --disk-gib 16
+
+The input file is only a locally saved, **untrusted snapshot** of the manifest, not a signed publisher statement. The planner checks its schema, metadata assertions, official Microsoft URL/locale/hash binding, all file paths/lengths/hashes, Windows Setup file names and FAT32 namespace collisions. It assigns EFI/ files to the **proposed 256 MiB FAT32 EFI partition**, and other installer files to the **proposed FAT32 payload partition**, with aligned GPT LBAs, filesystem headroom and conservative occupied-byte estimates. It rejects path traversal, reserved DOS device names, file-as-directory collisions and unsupported sizes. Files larger than FAT32's 4 GiB-minus-one limit are blocking, except INSTALL.WIM where **wimlib splitting is only proposed** with an illustrative 3,800 MiB part target and capacity estimate. The plan explicitly does *not* produce SWM files or verify future part sizes/hashes, nor can it convert oversized ESD. No NTFS support is assumed.
+
+All plans report manifestAssertionsTrusted=false, virtualDiskGenerated=false, actualSplitWimArtifactsVerified=false, windowsSetupBootVerified=false, physicalWriteAuthorized=false and actionable=false. The plan remains **non-executable** even if the estimated capacity fits. True staging requires fresh Microsoft/source SHA evidence, real WIM resource verification, a qualified multi-GiB SWM conversion, filesystem image construction and independent read-back, and witnessed Windows Setup boot.
+
 ## Optional read-only QEMU evidence
 
 Once the official ISO passes full manifest validation, the existing QEMU/OVMF runner can independently recheck the live Microsoft checksum before booting the unmodified optical ISO:

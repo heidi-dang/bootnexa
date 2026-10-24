@@ -64,6 +64,10 @@ This closes an integration gap between real-format SWM verification and the mult
 
 An independently source-verified, read-only official Microsoft ISO intake now exists for supported English x64 locales, with a pinned Microsoft HTTPS checksum table, bounded 7-Zip ISO/UDF listing, SHA-256 hashing of every real file by streaming to stdout, source-before/source-after verification and a local private manifest. The QEMU acceptance harness can optionally independently re-check Microsoft's live checksum immediately before guest boot. There was no official Microsoft ISO available in the qualification workspace. Full-size Windows installer creation and genuine Windows Setup boot remain unverified. See [official ISO acceptance and command sequence](WINDOWS-OFFICIAL-ISO-ACCEPTANCE.md).
 
+## Full ISO file-placement and size gate (dry-run only)
+
+The developer-only Windows installer layout planner consumes an ISO full-file SHA receipt from the independent Microsoft manifest preflight and produces a **non-actionable** 1–24 GiB GPT/FAT32 capacity and file-placement proposal, including 256 MiB EFI partition, payload partition bounds, file hash identities, FAT32 path collision refusal, the exact 4 GiB-minus-one file limit, split-WIM size estimates and oversized ESD refusal. Neither the saved manifest nor the estimated split parts authorize execution. No ISO file is streamed into a large virtual disk by this planner, and there is no Windows Setup boot claim. See [official ISO acceptance](WINDOWS-OFFICIAL-ISO-ACCEPTANCE.md).
+
 ## Remaining Windows installer exit gates
 
 1. **Provenance:** obtain an unmodified and appropriately licensed official Microsoft Windows 11 ISO outside the repository, record its publisher-provided digest, language, edition, size and acquisition URL/date. No official Microsoft installer binary may be included in repo fixtures or distributed with this project.
