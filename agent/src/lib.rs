@@ -37,4 +37,5 @@ mod udf_stream;
 pub mod udf_structure;
 pub mod udf_tree;
 pub mod windows_iso;
+pub mod windows_large_virtual;
 pub mod windows_media_plan;

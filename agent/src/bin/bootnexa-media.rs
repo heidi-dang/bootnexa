@@ -8,7 +8,9 @@ use bootnexa_agent::{
     partition_layout::Scheme,
     swm_qualification, udf_structure, udf_tree,
     virtual_boot_media::VirtualBootMedia,
-    windows_iso, windows_media_plan,
+    windows_iso,
+    windows_large_virtual::LargeSparseDisk,
+    windows_media_plan,
 };
 use serde_json::json;
 use std::{
@@ -22,6 +24,13 @@ use uuid::Uuid;
 fn run() -> Result<(), Box<dyn Error>> {
     let args = env::args().skip(1).collect::<Vec<_>>();
     match args.as_slice(){
+        [op,gib] if op=="qualify-large-windows-gpt" =>{
+            // Anonymous sparse GPT/FAT32 EFI qualification only.
+            // Never writes a physical device, exports a disk, or formats NTFS.
+            let capacity:u32=gib.parse()?;
+            let mut disk=LargeSparseDisk::new(capacity)?;
+            println!("{}",serde_json::to_string(&disk.verify()?)?);
+        }
         [op,source] if op=="inspect-iso" =>{
             let mut file=File::open(source)?;
             let meta=file.metadata()?;
@@ -328,7 +337,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 "outputSha256":digest,"media":report
             }));
         }
-        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | inspect-udf-structure <UDF-ISO> | inspect-udf-tree <restricted-UDF-ISO> | split-wim-virtual <WIM> <existing-output-directory> [part-size-MiB] | build-windows-swm-demo <synthetic-source-directory> <verified-swm-directory> <existing-output-directory> | inspect-windows-iso <ISO> | plan-windows-media <ISO> | stage-windows-virtual-cdrom <supported-plain-ISO9660-ISO> <existing-output-directory> | plan-iso <ISO> | build-udf-small-virtual <restricted-UDF-ISO> <real-output-directory> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-alpine-virtual <verified-Alpine-virt-3.24.1-or-3.24.2-x86_64.iso> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
+        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | inspect-udf-structure <UDF-ISO> | inspect-udf-tree <restricted-UDF-ISO> | split-wim-virtual <WIM> <existing-output-directory> [part-size-MiB] | qualify-large-windows-gpt <1-24-GiB> | build-windows-swm-demo <synthetic-source-directory> <verified-swm-directory> <existing-output-directory> | inspect-windows-iso <ISO> | plan-windows-media <ISO> | stage-windows-virtual-cdrom <supported-plain-ISO9660-ISO> <existing-output-directory> | plan-iso <ISO> | build-udf-small-virtual <restricted-UDF-ISO> <real-output-directory> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-alpine-virtual <verified-Alpine-virt-3.24.1-or-3.24.2-x86_64.iso> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
     }
     Ok(())
 }

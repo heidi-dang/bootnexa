@@ -38,6 +38,14 @@ The JSON evidence fields always record `publisherProvenanceVerified=false`, `gra
 
 CI tests reject invalid hashes/ISO headers/symlinks, check safe JSON block-device and Unix socket arguments, and test mocked QMP screen capture. A separate bounded 30-second QEMU test boots a **512 MiB descriptor-only synthetic ISO** (not Windows), captures a firmware frame through QMP, and confirms its evidence does not claim Setup boot success. This measures the harness mechanics, not Microsoft installer boot compatibility.
 
+## Large-capacity sparse GPT / FAT32 EFI foundation (Linux-only, not a Windows installer)
+
+The separate command `bootnexa-media qualify-large-windows-gpt <1-24-GiB>` creates a **temporary anonymous sparse file only on Linux**, from 1 to 24 GiB. It builds a genuine protective-MBR/GPT layout with both primary and backup GPT headers and partition-entry arrays (CRCs independently validated), a 256 MiB EFI System Partition formatted as FAT32, and a second Microsoft Basic Data partition with **no filesystem and no Windows files**. The EFI region's stream is bounded so FAT32 writes cannot cross into the reserved payload region; the two partitions are disjoint and checked for overlap. The reserved payload is spot-checked at its first, middle and last sectors for zero-filled content; this is **not a full emptiness scan**.
+
+The command reports `espFat32Verified=true`, `primaryAndBackupGptVerified=true`, `reservedPayloadSampledZero=true`, and a SHA-256 over GPT metadata only. It explicitly reports `fullDiskSha256Verified=false`, `ntfsWriterAvailable=false`, `payloadFilesystemFormatted=false`, `windowsInstallerCompatible=false`, `windowsSetupBootVerified=false`, `physicalWriteAuthorized=false`. Disk storage is anonymous, is not exported or given a filesystem path, and is destroyed when the process exits. The legacy small-media writer retains its strict 256 MiB total-disk cap. Windows platform execution is disallowed until large sparse-file semantics are separately qualified.
+
+CI verifies 1, 8 and 24 GiB sparse layouts; adversarial Rust tests modify primary/backup GPT sectors and reserved-payload sentinels, truncate nominal capacity, and attempt out-of-bound partition writes. **Full installer-file streaming into a large disk, a validated NTFS writer, an appropriate FAT32-only Setup layout, and genuine Windows Setup boot are still future milestones.**
+
 ## Remaining Windows installer exit gates
 
 1. **Provenance:** obtain an unmodified and appropriately licensed official Microsoft Windows 11 ISO outside the repository, record its publisher-provided digest, language, edition, size and acquisition URL/date. No official Microsoft installer binary may be included in repo fixtures or distributed with this project.
