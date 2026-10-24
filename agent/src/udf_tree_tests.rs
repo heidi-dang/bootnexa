@@ -41,15 +41,15 @@ fn fid(block: u32, part: u16, location: u32) -> Vec<u8> {
 fn fid_requires_correct_crc_partition_logical_location_and_full_record() {
     let valid = fid(5, 7, 3);
     assert_eq!(
-        validate_fid(&valid, 0, 3, 7).unwrap().1.unwrap(),
+        checked_fid(&valid, 0, 3, 7).unwrap().1.unwrap(),
         ("BOOT.WIM".into(), 5, false)
     );
-    assert!(validate_fid(&valid, 0, 3, 8).is_err());
-    assert!(validate_fid(&valid, 0, 4, 7).is_err());
-    assert!(validate_fid(&valid[..valid.len() - 1], 0, 3, 7).is_err());
+    assert!(checked_fid(&valid, 0, 3, 8).is_err());
+    assert!(checked_fid(&valid, 0, 4, 7).is_err());
+    assert!(checked_fid(&valid[..valid.len() - 1], 0, 3, 7).is_err());
     let mut corrupt = valid;
     corrupt[42] ^= 0x01;
-    assert!(validate_fid(&corrupt, 0, 3, 7).is_err());
+    assert!(checked_fid(&corrupt, 0, 3, 7).is_err());
 }
 #[test]
 fn extent_arithmetic_and_segment_boundary_fail_closed() {
@@ -82,7 +82,7 @@ fn extent_arithmetic_and_segment_boundary_fail_closed() {
             bytes: 16,
         },
     ];
-    assert_eq!(map_offset(&regions, 44).unwrap(), (3, 1));
-    assert_eq!(map_offset(&regions, 45).unwrap(), (8, 16));
-    assert!(map_offset(&regions, 61).is_err());
+    assert_eq!(logical_dir_sector(&regions, 44).unwrap(), (3, 1));
+    assert_eq!(logical_dir_sector(&regions, 45).unwrap(), (8, 16));
+    assert!(logical_dir_sector(&regions, 61).is_err());
 }

@@ -53,15 +53,15 @@ pub struct UdfTree {
     pub windows_setup_filename_candidate: bool,
 }
 #[derive(Debug, Clone, Copy)]
-struct Extent {
-    block: u32,
-    bytes: u32,
+pub(crate) struct Extent {
+    pub(crate) block: u32,
+    pub(crate) bytes: u32,
 }
 #[derive(Debug)]
-struct Inode {
-    kind: u8,
-    size: u64,
-    extents: Vec<Extent>,
+pub(crate) struct Inode {
+    pub(crate) kind: u8,
+    pub(crate) size: u64,
+    pub(crate) extents: Vec<Extent>,
 }
 fn extent_abs(
     block: u32,
@@ -87,7 +87,7 @@ fn extent_abs(
     )?;
     Ok(lba * BLOCK)
 }
-fn inode<R: Read + Seek>(
+pub(crate) fn checked_inode<R: Read + Seek>(
     reader: &mut R,
     vol: &UdfVolume,
     image_bytes: u64,
@@ -196,9 +196,9 @@ fn filename(encoded: &[u8]) -> Result<String, UdfTreeError> {
     }
     Ok(name)
 }
-type FidName = (String, u32, bool);
+pub(crate) type FidName = (String, u32, bool);
 
-fn validate_fid(
+pub(crate) fn checked_fid(
     data: &[u8],
     pos: usize,
     logical_block: u64,
@@ -274,7 +274,7 @@ pub fn inspect<R: Read + Seek>(source: &mut R, image_bytes: u64) -> Result<UdfTr
         if !processed_dirs.insert(block) || icbs.len() > MAX_PATHS + 1 || depth > MAX_DEPTH {
             return Err(UdfTreeError::Unsupported);
         }
-        let node = inode(source, &vol, image_bytes, block)?;
+        let node = checked_inode(source, &vol, image_bytes, block)?;
         if node.kind != 4 {
             return Err(UdfTreeError::Corrupt);
         }
@@ -290,7 +290,7 @@ pub fn inspect<R: Read + Seek>(source: &mut R, image_bytes: u64) -> Result<UdfTr
             let end = start + u64::from(part.bytes).div_ceil(BLOCK) * BLOCK;
             extents.push((start, end));
         }
-        let dir_bytes = read_metadata(source, &vol, image_bytes, &node)?;
+        let dir_bytes = checked_dir_bytes(source, &vol, image_bytes, &node)?;
         let mut pos = 0usize;
         while pos < dir_bytes.len() {
             let block_end = ((pos / 2048) + 1) * 2048;
@@ -302,9 +302,9 @@ pub fn inspect<R: Read + Seek>(source: &mut R, image_bytes: u64) -> Result<UdfTr
                 pos = end;
                 continue;
             }
-            let (logical_location, segment_left) = map_offset(&node.extents, pos)?;
+            let (logical_location, segment_left) = logical_dir_sector(&node.extents, pos)?;
             let (record_len, fid) =
-                validate_fid(&dir_bytes, pos, logical_location, vol.partition_number)?;
+                checked_fid(&dir_bytes, pos, logical_location, vol.partition_number)?;
             if record_len > segment_left {
                 return Err(UdfTreeError::Corrupt);
             }
@@ -321,7 +321,7 @@ pub fn inspect<R: Read + Seek>(source: &mut R, image_bytes: u64) -> Result<UdfTr
             {
                 return Err(UdfTreeError::Unsupported);
             }
-            let child = inode(source, &vol, image_bytes, icb_block)?;
+            let child = checked_inode(source, &vol, image_bytes, icb_block)?;
             if (child.kind == 4) != is_dir || !icbs.insert(icb_block) {
                 return Err(UdfTreeError::Corrupt);
             }
@@ -388,7 +388,10 @@ pub fn inspect<R: Read + Seek>(source: &mut R, image_bytes: u64) -> Result<UdfTr
         windows_setup_filename_candidate: windows_candidate,
     })
 }
-fn map_offset(extents: &[Extent], offset: usize) -> Result<(u64, usize), UdfTreeError> {
+pub(crate) fn logical_dir_sector(
+    extents: &[Extent],
+    offset: usize,
+) -> Result<(u64, usize), UdfTreeError> {
     let mut start = 0usize;
     for part in extents {
         let end = start
@@ -409,7 +412,7 @@ fn map_offset(extents: &[Extent], offset: usize) -> Result<(u64, usize), UdfTree
 #[path = "udf_tree_tests.rs"]
 mod tests;
 
-fn read_metadata<R: Read + Seek>(
+pub(crate) fn checked_dir_bytes<R: Read + Seek>(
     source: &mut R,
     vol: &UdfVolume,
     image_bytes: u64,

@@ -40,6 +40,7 @@ pub struct WimHeader {
     pub header_flags: u32,
     pub boot_index: u32,
     pub resources_verified: bool,
+    pub resource_ranges_bounded: bool,
     pub solid_archive: bool,
     pub part_number: u16,
     pub total_parts: u16,
@@ -110,12 +111,40 @@ fn parse_wim<R: Read + Seek>(file: &mut R, entry: &IsoFile) -> Result<WimHeader,
     {
         return Err(WindowsIsoError::Corrupt);
     }
+    // Outer WIM resource table contains four 24-byte location records.
+    // Check offsets/lengths only; compression, SHA-1 blobs, the XML index and
+    // integrity tables are NOT verified and cannot grant installer authority.
+    let mut resource_ranges = Vec::<(u64, u64)>::new();
+    for start in [48usize, 72, 96, 124] {
+        let encoded = u64::from_le_bytes(header[start..start + 8].try_into().unwrap());
+        let compressed = encoded & 0x00ff_ffff_ffff_ffff;
+        let offset = u64::from_le_bytes(header[start + 8..start + 16].try_into().unwrap());
+        let expanded = u64::from_le_bytes(header[start + 16..start + 24].try_into().unwrap());
+        if compressed == 0 && offset == 0 && expanded == 0 {
+            continue;
+        }
+        if compressed == 0
+            || offset < u64::from(header_bytes)
+            || expanded == 0
+            || offset
+                .checked_add(compressed)
+                .is_none_or(|end| end > entry.length)
+        {
+            return Err(WindowsIsoError::Corrupt);
+        }
+        resource_ranges.push((offset, offset + compressed));
+    }
+    resource_ranges.sort_unstable();
+    if resource_ranges.windows(2).any(|p| p[0].1 > p[1].0) {
+        return Err(WindowsIsoError::Corrupt);
+    }
     Ok(WimHeader {
         image_count,
         format_version,
         header_flags: flags,
         boot_index,
         resources_verified: false,
+        resource_ranges_bounded: true,
         solid_archive: format_version == 0x00000e00,
         part_number,
         total_parts,
