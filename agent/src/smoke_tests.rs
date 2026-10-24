@@ -312,8 +312,22 @@ async fn real_http_discovery_failure_is_not_a_success() {
 async fn windows_native_get_disk_read_only_smoke() {
     // This executes genuine Windows PowerShell Storage discovery on a Windows CI
     // runner. No disk open-for-write, format, volume unmount, or elevation occurs.
-    let result = device::discover().await;
-    let drives = result.expect("Windows Get-Disk should provide a parseable read-only inventory");
+    let drives = match device::discover().await {
+        Ok(drives) => drives,
+        Err(device::DiscoveryError::Unavailable(reason))
+            if reason == "disk enumeration timed out" =>
+        {
+            // Shared Windows CI runners occasionally delay Storage cmdlets
+            // beyond the runtime's fixed 30-second fail-closed deadline.
+            // Retry once for *this test only*; do not widen the production
+            // discovery timeout or treat an unavailable inventory as empty.
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            device::discover().await.expect(
+                "Windows Get-Disk timed out twice; live read-only inventory is NOT qualified",
+            )
+        }
+        Err(error) => panic!("Windows Get-Disk could not enumerate: {error}"),
+    };
     assert!(
         drives
             .iter()
