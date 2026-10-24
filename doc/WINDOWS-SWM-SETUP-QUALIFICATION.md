@@ -28,6 +28,16 @@ The CI suite generates 14 pseudo-random synthetic files without Microsoft binari
 
 Previous stages independently verified a synthetic multi-extent UDF source into a 96 MiB anonymous GPT/FAT32 file-backed disk. **The SWM artifacts are not yet integrated into a full-size Windows installer virtual disk.**
 
+## QEMU/OVMF evidence harness for operator-supplied licensed ISO (not Setup proof)
+
+A separate read-only developer harness is now provided at `tests/virtual-media/windows_setup_ovmf_gate.py`. The operator must supply a **local licensed ISO** and an independently known 64-character SHA-256 as arguments; this comparison does *not* independently verify publisher provenance. It refuses symlinks, nonregular files, missing ISO9660/UDF recognition signatures, source sizes outside 512 MiB–24 GiB and checksum mismatches **before creating evidence**. It does not fetch Microsoft images or transmit source bytes.
+
+The QEMU/OVMF VM uses q35 with software TCG, 2 GiB RAM, an explicitly **read-only JSON ISO block device**, private copy-on-write firmware variables, **no guest network or host physical disk**, and UNIX-only QMP/VNC sockets. Runtime is limited to 30–600 seconds; the whole VM process group is terminated on exit. QMP captures bounded graphical PPM frames and bounded serial/QEMU logs into a unique local mode-0700 evidence directory, with SHA-256 hashes. The source ISO is rehashed after the run. No screenshots/media are committed to GitHub.
+
+The JSON evidence fields always record `publisherProvenanceVerified=false`, `graphicalWindowsSetupObserved=false`, `windowsSetupBootVerified=false`, `manualReviewRequired=true` and `physicalWriteAuthorized=false`. **A captured firmware screen, PXE failure, or a screenshot by itself is not Setup evidence**; genuine Windows Setup requires review and explicit independent attestation with verified official media.
+
+CI tests reject invalid hashes/ISO headers/symlinks, check safe JSON block-device and Unix socket arguments, and test mocked QMP screen capture. A separate bounded 30-second QEMU test boots a **512 MiB descriptor-only synthetic ISO** (not Windows), captures a firmware frame through QMP, and confirms its evidence does not claim Setup boot success. This measures the harness mechanics, not Microsoft installer boot compatibility.
+
 ## Remaining Windows installer exit gates
 
 1. **Provenance:** obtain an unmodified and appropriately licensed official Microsoft Windows 11 ISO outside the repository, record its publisher-provided digest, language, edition, size and acquisition URL/date. No official Microsoft installer binary may be included in repo fixtures or distributed with this project.
