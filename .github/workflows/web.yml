@@ -51,6 +51,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf
       - name: Generate and actually boot the virtual EFI media
         run: bash ./tests/virtual-media/boot-ovmf.sh
+      - name: Confirm read-only Windows Setup evidence harness captures QMP frames without false Setup claims
+        run: python3 tests/virtual-media/verify-windows-setup-evidence-harness.py
 
   linux_iso_boot:
     strategy:
