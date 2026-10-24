@@ -47,7 +47,13 @@ pub fn plan(report: &WindowsIsoReport) -> WindowsLayoutPlan {
         && report.setup_exe_observed
         && report.el_torito_uefi_catalog;
     let state = if report.udf_signature_observed {
-        "udf_translation_and_file_tree_consistency_required"
+        if !report.udf_filename_tree_verified {
+            "udf_translation_and_file_tree_consistency_required"
+        } else if report.udf_iso9660_file_listing_consistent != Some(true) {
+            "udf_iso9660_namespace_conflict"
+        } else {
+            "udf_content_integrity_and_windows_boot_not_verified"
+        }
     } else if !complete {
         "unqualified_windows_setup_structure"
     } else if requires_split {
@@ -112,6 +118,9 @@ mod tests {
             udf_signature_observed: false,
             udf_structural_metadata_verified: false,
             udf_structure: None,
+            udf_filename_tree_verified: false,
+            udf_iso9660_file_listing_consistent: None,
+            udf_tree: None,
             el_torito_uefi_catalog: true,
             x64_efi_loader_header_valid: true,
             setup_exe_observed: true,
@@ -140,6 +149,22 @@ mod tests {
         assert_eq!(above.proposed_split_chunk_bytes, Some(PROPOSED_SPLIT_CHUNK));
         assert_eq!(above.state, "split_wim_encoder_and_readback_required");
         assert!(!above.split_wim_implemented && !above.windows_setup_boot_verified);
+    }
+    #[test]
+    fn udf_independent_namespace_mismatch_blocks_windows_media() {
+        let mut r = fake();
+        r.udf_signature_observed = true;
+        r.udf_filename_tree_verified = true;
+        r.udf_iso9660_file_listing_consistent = Some(false);
+        let p = plan(&r);
+        assert_eq!(p.state, "udf_iso9660_namespace_conflict");
+        assert!(!p.actionable && !p.virtual_usb_builder_implemented);
+        r.udf_iso9660_file_listing_consistent = Some(true);
+        assert_eq!(
+            plan(&r).state,
+            "udf_content_integrity_and_windows_boot_not_verified"
+        );
+        assert!(!plan(&r).windows_setup_boot_verified);
     }
     #[test]
     fn udf_and_esd_require_independent_qualification() {

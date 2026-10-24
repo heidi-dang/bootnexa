@@ -4,7 +4,7 @@
 use crate::{
     iso_inspect,
     iso_tree::{self, IsoFile},
-    udf_structure,
+    udf_structure, udf_tree,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -61,6 +61,9 @@ pub struct WindowsIsoReport {
     pub udf_signature_observed: bool,
     pub udf_structural_metadata_verified: bool,
     pub udf_structure: Option<udf_structure::UdfVolume>,
+    pub udf_filename_tree_verified: bool,
+    pub udf_iso9660_file_listing_consistent: Option<bool>,
+    pub udf_tree: Option<udf_tree::UdfTree>,
     pub el_torito_uefi_catalog: bool,
     pub x64_efi_loader_header_valid: bool,
     pub setup_exe_observed: bool,
@@ -182,6 +185,29 @@ pub fn inspect<R: Read + Seek>(
         None
     };
     let tree = iso_tree::enumerate_windows_metadata(file, image_bytes)?;
+    let udf_paths = if udf_observed {
+        udf_tree::inspect(file, image_bytes).ok()
+    } else {
+        None
+    };
+    // Two independently parsed namespaces must never be conflated.
+    // A mismatch remains metadata-only and cannot grant write authority.
+    let namespace_agreement = udf_paths.as_ref().map(|udf| {
+        let mut iso_files = tree
+            .files
+            .iter()
+            .map(|p| (p.path.clone(), p.length))
+            .collect::<Vec<_>>();
+        let mut udf_files = udf
+            .file_paths
+            .iter()
+            .filter(|p| !p.directory)
+            .map(|p| (p.path.clone(), p.file_bytes))
+            .collect::<Vec<_>>();
+        iso_files.sort();
+        udf_files.sort();
+        iso_files == udf_files
+    });
     let get = |path: &str| tree.files.iter().find(|entry| entry.path == path);
     let boot = get("SOURCES/BOOT.WIM");
     let install_wim = get("SOURCES/INSTALL.WIM");
@@ -228,6 +254,9 @@ pub fn inspect<R: Read + Seek>(
         udf_signature_observed: udf_observed,
         udf_structural_metadata_verified: udf_metadata.is_some(),
         udf_structure: udf_metadata,
+        udf_filename_tree_verified: udf_paths.is_some(),
+        udf_iso9660_file_listing_consistent: namespace_agreement,
+        udf_tree: udf_paths,
         el_torito_uefi_catalog: iso.uefi_catalog_entry,
         x64_efi_loader_header_valid: loader_valid,
         setup_exe_observed: setup_exe,

@@ -96,6 +96,108 @@ with tempfile.TemporaryDirectory(prefix="bootnexa-udf-structure-") as tmp:
         assert invoke("stage-windows-virtual-cdrom",bad).returncode != 0,name
         print("PASS rejects tampered "+name)
 
+    def fid(name, block, directory, containing_block):
+        raw=bytes([8])+name.encode("ascii")
+        used=38+len(raw)
+        aligned=(used+3)//4*4
+        content=bytearray(aligned)
+        put16(content,0,257)
+        put16(content,2,2)
+        put32(content,12,containing_block)
+        put16(content,16,1)
+        content[18]=2 if directory else 0
+        content[19]=len(raw)
+        put32(content,20,BLK)
+        put32(content,24,block)
+        put16(content,28,7)
+        put16(content,36,0)
+        content[38:used]=raw
+        put16(content,10,used-16)
+        put16(content,8,binascii.crc_hqx(content[16:used],0))
+        content[4]=sum(content[i] for i in range(16) if i!=4)&255
+        return bytes(content)
+    def inode(block, file_kind, data_block, content_size):
+        def fields(desc_bytes):
+            desc_bytes[27]=file_kind
+            struct.pack_into("<Q",desc_bytes,56,content_size)
+            put32(desc_bytes,172,8)
+            put32(desc_bytes,176,content_size)
+            put32(desc_bytes,180,data_block)
+        return desc(261,block,fields)
+    treeiso=root/"udf-readonly-tree.iso"
+    treeiso.write_bytes(iso.read_bytes())
+    # All fields use partition-relative sectors; only fixed synthetic metadata
+    # is present. None of these paths contain genuine Microsoft files.
+    root_names=b"".join((fid("SOURCES",4,True,3),
+                         fid("EFI",10,True,3),
+                         fid("SETUP.EXE",16,False,3)))
+    sources_names=b"".join((fid("BOOT.WIM",6,False,5),
+                            fid("INSTALL.WIM",8,False,5)))
+    efi_names=fid("BOOT",12,True,11)
+    boot_names=fid("BOOTX64.EFI",14,False,13)
+    entries=[
+        (2,4,3,root_names),(4,4,5,sources_names),
+        (6,5,7,b"FAKE-BOOT-WIM"),(8,5,9,b"FAKE-INSTALL-WIM"),
+        (10,4,11,efi_names),(12,4,13,boot_names),
+        (14,5,15,b"MZ-FAKE-EFI"),(16,5,17,b"MZ-FAKE-SETUP")]
+    with treeiso.open("r+b") as f:
+        for block,kind,data_block,payload in entries:
+            f.seek((280+block)*BLK)
+            f.write(inode(block,kind,data_block,len(payload)))
+            f.seek((280+data_block)*BLK)
+            f.write(payload)
+    tree=invoke("inspect-udf-tree",treeiso)
+    assert tree.returncode==0,tree.stderr
+    observed=json.loads(tree.stdout)
+    assert observed["rootDirectoryTraversalVerified"] is True
+    assert observed["inspectedDirectories"]==4
+    assert observed["inspectedPaths"]==7
+    assert observed["windowsSetupFilenameCandidate"] is True
+    candidate=invoke("plan-windows-media",treeiso)
+    assert candidate.returncode==0,candidate.stderr
+    summary=json.loads(candidate.stdout)
+    assert summary["inspection"]["udfFilenameTreeVerified"] is True
+    assert summary["inspection"]["udfIso9660FileListingConsistent"] is False
+    assert summary["layoutPlan"]["actionable"] is False
+    assert summary["layoutPlan"]["state"]=="udf_iso9660_namespace_conflict"
+    assert summary["inspection"]["udfTree"]["fileExtractionSupported"] is False
+    assert observed["physicalWriteAuthorized"] is False
+    assert observed["fileExtractionSupported"] is False
+    assert observed["virtualUsbBuilderImplemented"] is False
+    assert observed["windowsSetupBootVerified"] is False
+    paths={p["path"]:p["fileBytes"] for p in observed["filePaths"]}
+    assert paths["SOURCES/INSTALL.WIM"]==len(b"FAKE-INSTALL-WIM")
+    assert paths["EFI/BOOT/BOOTX64.EFI"]==len(b"MZ-FAKE-EFI")
+    assert invoke("stage-windows-virtual-cdrom",treeiso).returncode != 0
+    print("PASS bounded UDF FID traversal detects synthetic Windows-shaped names with zero write/extraction authority")
+    for title,lba,relative in [
+        ("fid-crc",283,8),("fid-name",283,42),
+        ("inode-content-address",286,180),("dir-root",282,56)]:
+        changed=root/("corrupt-tree-"+title+".iso")
+        changed.write_bytes(treeiso.read_bytes())
+        with changed.open("r+b") as file:
+            file.seek(lba*BLK+relative)
+            old=file.read(1)
+            file.seek(lba*BLK+relative)
+            file.write(bytes([old[0]^0x40]))
+        assert invoke("inspect-udf-tree",changed).returncode!=0,title
+        print("PASS UDF file tree refuses "+title)
+    # Disjoint file IDs pointing at the same ICB are ambiguous aliases.
+    duplicate=root/"duplicate-icb.iso"
+    duplicate.write_bytes(treeiso.read_bytes())
+    # Name bytes alone cannot be trusted when the CRC is invalid.
+    with duplicate.open("r+b") as f:
+        start=285*BLK+48
+        f.seek(start)
+        data=bytearray(f.read(48))
+        put32(data,24,6)  # INSTALL.WIM reuses BOOT.WIM ICB
+        put16(data,8,binascii.crc_hqx(data[16:47],0))
+        data[4]=sum(data[i] for i in range(16) if i!=4)&255
+        f.seek(start)
+        f.write(data)
+    assert invoke("inspect-udf-tree",duplicate).returncode!=0
+    print("PASS UDF alias/metadata corruption is not accepted")
+
     short=root/"truncated.iso"
     short.write_bytes(iso.read_bytes()[:255*BLK])
     assert invoke("inspect-udf-structure",short).returncode != 0
