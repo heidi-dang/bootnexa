@@ -396,6 +396,24 @@ pub struct PayloadStageReport {
     pub staged_path: &'static str,
     pub primary_and_backup_gpt_verified: bool,
 }
+/// Synthetic-only split-WIM receipt. A verified SWM archive does not prove
+/// compatibility with an official Windows Setup ISO or EFI bootability.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LargeSwmReceipt {
+    pub virtual_only: bool,
+    pub physical_write_authorized: bool,
+    pub windows_setup_boot_verified: bool,
+    pub installer_compatible_verified: bool,
+    pub full_disk_sha256_verified: bool,
+    pub split_archive_preverified: bool,
+    pub payload_fat32_verified: bool,
+    pub gpt_integrity_verified: bool,
+    pub disk_bytes: u64,
+    pub total_staged_bytes: u64,
+    pub staged_parts: Vec<crate::swm_qualification::SplitPart>,
+}
+
 pub struct LargeSparseDisk {
     file: File,
     b: Bounds,
@@ -627,6 +645,156 @@ impl LargeSparseDisk {
         self.payload_fat32 = true;
         self.verify()
     }
+    /// Stage an independently wimlib-verified split archive into the large
+    /// anonymous FAT32 payload partition. Strict small-file demo budget:
+    /// real multi-GiB Windows installers still require another qualification.
+    pub fn stage_verified_swm_demo(
+        &mut self,
+        split_dir: &std::path::Path,
+    ) -> Result<LargeSwmReceipt, MediaError> {
+        const MAX_PART_BYTES: u64 = 64 * 1024 * 1024;
+        const MAX_AGGREGATE: u64 = 256 * 1024 * 1024;
+        if !self.payload_fat32 {
+            return Err(MediaError::Corrupt);
+        }
+        let parts = crate::swm_qualification::verify_existing_split(split_dir)
+            .map_err(|_| MediaError::Corrupt)?;
+        if !(2..=16).contains(&parts.len()) {
+            return Err(MediaError::Capacity);
+        }
+        let mut total = 0u64;
+        for part in &parts {
+            if part.bytes == 0 || part.bytes > MAX_PART_BYTES {
+                return Err(MediaError::Capacity);
+            }
+            total = total.checked_add(part.bytes).ok_or(MediaError::Capacity)?;
+            if total > MAX_AGGREGATE {
+                return Err(MediaError::Capacity);
+            }
+        }
+
+        // No payload may touch GPT metadata or the EFI partition. Only the
+        // bounded Region below accepts writes, not the entire sparse file.
+        let original_gpt = verify_gpt(&mut self.file, self.b)?;
+        {
+            let view = Region {
+                file: &mut self.file,
+                base: self.b.data_first * SECTOR,
+                length: (self.b.data_last - self.b.data_first + 1) * SECTOR,
+                pos: 0,
+            };
+            let fs = FileSystem::new(view, FsOptions::new())?;
+            if fs.fat_type() != FatType::Fat32 {
+                return Err(MediaError::Corrupt);
+            }
+            let root = fs.root_dir();
+            // Reject any existing SOURCES directory, not only exact files.
+            if root.open_dir("SOURCES").is_ok() {
+                return Err(MediaError::Corrupt);
+            }
+            let sources = root.create_dir("SOURCES")?;
+            for part in &parts {
+                let source_path = split_dir.join(&part.filename);
+                if !std::fs::symlink_metadata(&source_path)?
+                    .file_type()
+                    .is_file()
+                {
+                    return Err(MediaError::Corrupt);
+                }
+                let mut source = File::open(source_path)?;
+                if source.metadata()?.len() != part.bytes {
+                    return Err(MediaError::Corrupt);
+                }
+                let mut dest = sources.create_file(&part.filename)?;
+                let mut sha = Sha256::new();
+                let mut remaining = part.bytes;
+                let mut buf = [0u8; 65_536];
+                while remaining > 0 {
+                    let take = remaining.min(buf.len() as u64) as usize;
+                    source.read_exact(&mut buf[..take])?;
+                    dest.write_all(&buf[..take])?;
+                    sha.update(&buf[..take]);
+                    remaining -= take as u64;
+                }
+                if source.read(&mut buf[..1])? != 0 || hex::encode(sha.finalize()) != part.sha256 {
+                    return Err(MediaError::Corrupt);
+                }
+                dest.flush()?;
+            }
+            drop(sources);
+            drop(root);
+            fs.unmount()?;
+        }
+        self.file.sync_all()?;
+        // Independent filesystem read-back, not just an in-memory copy hash.
+        {
+            let view = Region {
+                file: &mut self.file,
+                base: self.b.data_first * SECTOR,
+                length: (self.b.data_last - self.b.data_first + 1) * SECTOR,
+                pos: 0,
+            };
+            let fs = FileSystem::new(view, FsOptions::new())?;
+            let root = fs.root_dir();
+            let sources = root.open_dir("SOURCES")?;
+            let mut found = 0usize;
+            for entry in sources.iter() {
+                let entry = entry?;
+                if entry.file_name() == "." || entry.file_name() == ".." {
+                    continue;
+                }
+                if !entry.is_file() {
+                    return Err(MediaError::Corrupt);
+                }
+                found += 1;
+            }
+            if found != parts.len() {
+                return Err(MediaError::Corrupt);
+            }
+            for part in &parts {
+                let mut file = sources.open_file(&part.filename)?;
+                let mut sha = Sha256::new();
+                let mut remaining = part.bytes;
+                let mut buf = [0u8; 65_536];
+                while remaining > 0 {
+                    let take = remaining.min(buf.len() as u64) as usize;
+                    file.read_exact(&mut buf[..take])?;
+                    sha.update(&buf[..take]);
+                    remaining -= take as u64;
+                }
+                if file.read(&mut buf[..1])? != 0 || hex::encode(sha.finalize()) != part.sha256 {
+                    return Err(MediaError::Corrupt);
+                }
+            }
+        }
+        // Detect source mutations during staging and verify archive structure
+        // again. No disk or receipts survive on any normal error path.
+        let after = crate::swm_qualification::verify_existing_split(split_dir)
+            .map_err(|_| MediaError::Corrupt)?;
+        if parts.len() != after.len()
+            || parts.iter().zip(&after).any(|(a, b)| {
+                a.filename != b.filename || a.bytes != b.bytes || a.sha256 != b.sha256
+            })
+            || verify_gpt(&mut self.file, self.b)? != original_gpt
+        {
+            return Err(MediaError::Corrupt);
+        }
+        let layout = self.verify()?;
+        Ok(LargeSwmReceipt {
+            virtual_only: true,
+            physical_write_authorized: false,
+            windows_setup_boot_verified: false,
+            installer_compatible_verified: false,
+            full_disk_sha256_verified: false,
+            split_archive_preverified: true,
+            payload_fat32_verified: layout.payload_fat32_verified,
+            gpt_integrity_verified: layout.primary_and_backup_gpt_verified,
+            disk_bytes: layout.disk_bytes,
+            total_staged_bytes: total,
+            staged_parts: parts,
+        })
+    }
+
     /// Stream a single bounded synthetic file into the second FAT32 only,
     /// rehashing the source and independently reading the FAT32 file.
     pub fn stage_synthetic_payload(

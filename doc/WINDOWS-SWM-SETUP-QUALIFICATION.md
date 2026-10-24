@@ -26,7 +26,7 @@ An integration fixture uses wimlib to produce real format-valid WIM and split SW
 
 The CI suite generates 14 pseudo-random synthetic files without Microsoft binaries, captures them into a **real standards-compliant WIM using wimlib**, and invokes the new CLI to split them into multiple SWM parts. It independently reruns the verifier, hashes all parts, checks the source before/after SHA, and rejects a malformed WIM, invalid part-size arguments, symlink input/output and unexpected output directories. This is real WIM and SWM **format qualification**, not Microsoft Windows Setup boot evidence.
 
-Previous stages independently verified a synthetic multi-extent UDF source into a 96 MiB anonymous GPT/FAT32 file-backed disk. **The SWM artifacts are not yet integrated into a full-size Windows installer virtual disk.**
+Previous stages independently verified a synthetic multi-extent UDF source into a 96 MiB anonymous GPT/FAT32 file-backed disk. **SWM artifacts now reach a sparse large-capacity FAT32 virtual partition, but this remains a bounded synthetic exercise rather than a complete bootable Windows installer disk.**
 
 ## QEMU/OVMF evidence harness for operator-supplied licensed ISO (not Setup proof)
 
@@ -54,6 +54,12 @@ The Linux-only large sparse disk now optionally supports `qualify-large-windows-
 
 **Verification limits:** The synthetic demo verifies the copied file, FAT32 structures and GPT metadata only. It does not hash the full multi-GiB disk, decode real Microsoft setup payloads, prove split-WIM source compatibility, provide legitimate Windows Setup or a UEFI boot proof, and does not enable a physical USB writer. The JSON receipts preserve `windowsSetupBootVerified=false`, `physicalWriteAuthorized=false`, and `fullDiskSha256Verified=false`. A two-partition FAT32 disk is **not automatically** a Windows bootable installer.
 
+## Full synthetic SWM set in anonymous large virtual FAT32 disk
+
+The Linux-only `stage-large-windows-swm-demo <1-24-GiB> <verified-swm-directory>` command re-verifies the full `install.swm`, `install2.swm`, ... source set through installed **wimlib** before staging. It accepts only **2–16 parts**, each at most **64 MiB**, with no more than **256 MiB total**. It copies each source in bounded 64 KiB chunks into the second FAT32 partition at `SOURCES/install*.swm`; the bounded partition view prevents writes crossing GPT or EFI boundaries. It then independently reopens and SHA-256-verifies every file from FAT32, re-runs wimlib source verification, and confirms unchanged GPT metadata. Symlink directories, corrupt split parts and unsupported disk sizes fail without producing persistent output.
+
+This closes an integration gap between real-format SWM verification and the multi-GiB-capacity anonymous disk. **It does not stage an official ISO, lift the per-part budgets to genuine install.wim size, export the large disk, or prove Windows Setup bootability.** Full disk SHA-256, publisher provenance, UEFI boot, and physical USB writing remain unverified or disabled.
+
 ## Remaining Windows installer exit gates
 
 1. **Provenance:** obtain an unmodified and appropriately licensed official Microsoft Windows 11 ISO outside the repository, record its publisher-provided digest, language, edition, size and acquisition URL/date. No official Microsoft installer binary may be included in repo fixtures or distributed with this project.
@@ -67,7 +73,9 @@ The Linux-only large sparse disk now optionally supports `qualify-large-windows-
 | Gate | Status |
 | --- | --- |
 | Format-valid synthetic WIM/SWM verifier and SHA receipts | CI green on PR #33; integration PR separate |
-| Restricted synthetic UDF to 96 MiB GPT/FAT32 artifact | CI-qualified in PR #32 |\n| Valid synthetic WIM/SWM set staged into verified 192 MiB virtual GPT/FAT32 | New integration, CI qualification required |
+| Restricted synthetic UDF to 96 MiB GPT/FAT32 artifact | CI-qualified in PR #32 |
+| Synthetic WIM/SWM set staged into verified 192 MiB virtual GPT/FAT32 | CI-qualified in PR #34 |
+| Real-format synthetic split SWM set staged into 1/8 GiB sparse FAT32 payload | New PR CI qualification required |
 | More-than-4GiB real official WIM split and FAT32 staging | Not tested |
 | Genuine Windows 11 Setup guest boot | Not tested — official media unavailable |
 | Secure Boot and physical USB writes | Disabled and unqualified |

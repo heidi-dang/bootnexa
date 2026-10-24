@@ -62,6 +62,29 @@ with tempfile.TemporaryDirectory(prefix="bootnexa-swm-fixture-") as tmp:
     print(f"PASS real wimlib captured, split, verified {len(parts)} SWM files from synthetic WIM")
     print("PASS source-before-after, per-part readback SHA-256 and FAT32 limits")
 
+    # Verify a complete genuine-format SWM set (synthetic bytes) staged in the
+    # separate FAT32 payload partition of a sparse multi-GiB GPT disk.
+    for gib in (1, 8):
+        qualified=run(cli,"stage-large-windows-swm-demo",gib,directory)
+        assert qualified.returncode==0,(qualified.stdout,qualified.stderr)
+        staged=json.loads(qualified.stdout)
+        assert staged["virtualOnly"] and not staged["physicalWriteAuthorized"]
+        assert staged["splitArchivePreverified"] and staged["payloadFat32Verified"]
+        assert staged["gptIntegrityVerified"]
+        assert not staged["windowsSetupBootVerified"]
+        assert not staged["installerCompatibleVerified"]
+        assert not staged["fullDiskSha256Verified"]
+        assert staged["diskBytes"]==gib*1024**3
+        assert staged["totalStagedBytes"]==sum(p["bytes"] for p in parts)
+        assert staged["stagedParts"]==parts
+        assert all(digest(directory/p["filename"])==p["sha256"] for p in parts)
+        print(f"PASS {gib}GiB GPT/FAT32 full verified SWM set staged with independent SHA read-back")
+    alias=root/"symlinked-swm-dir"
+    alias.symlink_to(directory,target_is_directory=True)
+    assert run(cli,"stage-large-windows-swm-demo","1",alias).returncode!=0
+    assert run(cli,"stage-large-windows-swm-demo","0",directory).returncode!=0
+    print("PASS large SWM stage refuses symlinked source and invalid capacity")
+
     # Populate a bounded synthetic GPT/FAT32 virtual disk from a qualified
     # split-WIM set and fixed Windows-shaped paths. Not genuine Setup media.
     stage=root/"staging"
@@ -110,6 +133,7 @@ with tempfile.TemporaryDirectory(prefix="bootnexa-swm-fixture-") as tmp:
     original=(directory/"install2.swm").read_bytes()
     (directory/"install2.swm").write_bytes(original[:64]+b"EVIL"+original[68:])
     assert run(cli,"build-windows-swm-demo",stage,directory,root).returncode!=0
+    assert run(cli,"stage-large-windows-swm-demo",1,directory).returncode!=0
     assert demos()==previous
     (directory/"install2.swm").write_bytes(original)
     print("PASS corrupted SWM part rejects virtual disk without creating output")
