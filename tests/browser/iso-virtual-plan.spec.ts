@@ -55,7 +55,22 @@ test('Windows installer ISO candidate is detected but virtual and physical writi
     name:'windows-candidate.iso',mimeType:'application/octet-stream',buffer:makeIso('windows')});
   await expect(page.getByTestId('iso-profile')).toHaveText('windows_install_candidate');
   await expect(page.getByTestId('iso-virtual-eligible')).toHaveText('Disabled / unsupported');
+  await expect(page.getByTestId('windows-install-payload')).toHaveText('Missing or ambiguous');
   await expect(page.getByTestId('iso-virtual-plan')).toContainText('WIM/ESD');
+});
+test('Windows ISO with a UDF volume signature never claims Setup boot or a physical writer',async({page})=>{
+  const image=makeIso('windows');
+  for(const [lba,signature] of [[19,'BEA01'],[20,'NSR03'],[21,'TEA01']] as const)
+    image.write(signature,lba*2048+1);
+  await page.goto('/');
+  await page.getByRole('button',{name:'ISO library'}).click();
+  await page.locator('#iso-library-file').setInputFiles({
+    name:'windows-udf-candidate.iso',mimeType:'application/octet-stream',buffer:image});
+  await expect(page.getByTestId('iso-profile')).toHaveText('windows_install_candidate');
+  await expect(page.getByTestId('iso-virtual-eligible')).toHaveText('Disabled / unsupported');
+  await expect(page.getByTestId('iso-virtual-plan')).toContainText('UDF');
+  await expect(page.getByTestId('iso-virtual-plan')).toContainText('Windows Setup boot tested');
+  await expect(page.getByRole('button',{name:/write usb|start writing/i})).toHaveCount(0);
 });
 test('malformed primary-directory extents fail closed in browser planning',async({page})=>{
   const image=makeIso();

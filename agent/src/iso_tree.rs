@@ -134,6 +134,23 @@ fn read_at<R: Read + Seek>(r: &mut R, pos: u64, out: &mut [u8]) -> Result<(), Tr
     Ok(())
 }
 pub fn enumerate<R: Read + Seek>(r: &mut R, length: u64) -> Result<IsoTree, TreeError> {
+    enumerate_bounded(r, length, false)
+}
+
+// Metadata-only Windows installer inspection: permits large file extents but
+// NEVER returns extraction, installation or physical-write authority.
+pub fn enumerate_windows_metadata<R: Read + Seek>(
+    r: &mut R,
+    length: u64,
+) -> Result<IsoTree, TreeError> {
+    enumerate_bounded(r, length, true)
+}
+
+fn enumerate_bounded<R: Read + Seek>(
+    r: &mut R,
+    length: u64,
+    metadata_only: bool,
+) -> Result<IsoTree, TreeError> {
     if !(18 * BLOCK..=MAX_ISO_BYTES).contains(&length) {
         return Err(TreeError::Unsupported);
     }
@@ -222,7 +239,7 @@ pub fn enumerate<R: Read + Seek>(r: &mut R, length: u64) -> Result<IsoTree, Tree
             if path.len() > 240 || !names.insert(path.clone()) {
                 return Err(TreeError::Unsupported);
             }
-            if names.len() > MAX_ENTRIES {
+            if names.len() > if metadata_only { 4096 } else { MAX_ENTRIES } {
                 return Err(TreeError::Capacity);
             }
             if entry.directory {
@@ -231,14 +248,20 @@ pub fn enumerate<R: Read + Seek>(r: &mut R, length: u64) -> Result<IsoTree, Tree
                 }
                 pending.push((path, entry.start, entry.size, depth + 1));
             } else {
-                if entry.size > MAX_FILE_BYTES {
+                if !metadata_only && entry.size > MAX_FILE_BYTES {
                     return Err(TreeError::Capacity);
                 }
                 tree.total_bytes = tree
                     .total_bytes
                     .checked_add(entry.size)
                     .ok_or(TreeError::Capacity)?;
-                if tree.total_bytes > MAX_TOTAL_BYTES {
+                if tree.total_bytes
+                    > if metadata_only {
+                        length
+                    } else {
+                        MAX_TOTAL_BYTES
+                    }
+                {
                     return Err(TreeError::Capacity);
                 }
                 if entry.size > 0 {
@@ -255,7 +278,7 @@ pub fn enumerate<R: Read + Seek>(r: &mut R, length: u64) -> Result<IsoTree, Tree
                     offset: entry.start,
                     length: entry.size,
                 });
-                if tree.files.len() > MAX_ENTRIES {
+                if tree.files.len() > if metadata_only { 4096 } else { MAX_ENTRIES } {
                     return Err(TreeError::Capacity);
                 }
             }

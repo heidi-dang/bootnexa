@@ -23,6 +23,15 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:smoke -- --workers=1
 
+  windows_iso_preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build native read-only virtual CD-ROM tool
+        run: cargo build --locked --manifest-path agent/Cargo.toml --bin bootnexa-media
+      - name: Qualify synthetic-only Windows preflight, SHA readback, and adversarial denials
+        run: python3 tests/virtual-media/verify-windows-preflight.py
+
   uefi_boot:
     runs-on: ubuntu-latest
     steps:

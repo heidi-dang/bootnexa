@@ -7,6 +7,7 @@ use bootnexa_agent::{
     iso_tree::{classify, enumerate},
     partition_layout::Scheme,
     virtual_boot_media::VirtualBootMedia,
+    windows_iso,
 };
 use serde_json::json;
 use std::{
@@ -86,6 +87,61 @@ fn run() -> Result<(), Box<dyn Error>> {
                 "outputSha256":digest,"media":hybrid.report(),
                 "virtualOnly":true,"physicalWriteAuthorized":false}));
         }
+        [op, source] if op == "inspect-windows-iso" => {
+            let mut source = File::open(source)?;
+            let metadata = source.metadata()?;
+            if !metadata.is_file() {
+                return Err("Windows ISO source must be a regular file".into());
+            }
+            let report = windows_iso::inspect(&mut source, metadata.len())?;
+            println!("{}", serde_json::to_string(&report)?);
+        }
+        [op, source, output_dir] if op == "stage-windows-virtual-cdrom" => {
+            // Developer-only bit-exact virtual CD-ROM artifact. No USB, GPT, FAT32,
+            // WIM splitting, setup execution or physical write authority.
+            let mut input = File::open(source)?;
+            let metadata = input.metadata()?;
+            if !metadata.is_file() {
+                return Err("Windows ISO source must be a regular file".into());
+            }
+            let dir = PathBuf::from(output_dir);
+            if !fs::symlink_metadata(&dir)?.file_type().is_dir() {
+                return Err("destination must be an existing real directory".into());
+            }
+            let dir = fs::canonicalize(dir)?;
+            let name = format!("bootnexa-windows-virtual-cdrom-{}.iso", Uuid::new_v4().simple());
+            let path = dir.join(name);
+            let mut output = OpenOptions::new().read(true).write(true).create_new(true).open(&path)?;
+            let result = windows_iso::stage_virtual_cdrom(&mut input, &mut output, metadata.len());
+            match result {
+                Ok((report, digest)) => {
+                    let finalize = (|| -> Result<(), Box<dyn Error>> {
+                        output.sync_all()?;
+                        if output.metadata()?.len() != metadata.len() {
+                            return Err("virtual CD-ROM output is not sector-identical".into());
+                        }
+                        Ok(())
+                    })();
+                    if let Err(error) = finalize {
+                        drop(output);
+                        let _ = fs::remove_file(&path);
+                        return Err(error);
+                    }
+                    println!("{}", json!({"virtualOnly":true,
+                        "physicalWriteAuthorized":false,
+                        "windowsSetupBootVerified":false,
+                        "virtualCdromOnly":true,
+                        "imageBytes":metadata.len(),
+                        "outputPath":path.to_string_lossy(),
+                        "outputSha256":digest,"media":report}));
+                }
+                Err(error) => {
+                    drop(output);
+                    let _ = fs::remove_file(&path);
+                    return Err(error.into());
+                }
+            }
+        }
         [op, source] if op == "plan-iso" => {
             let mut input=File::open(source)?;
             let metadata=input.metadata()?;
@@ -155,7 +211,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 "outputSha256":digest,"media":report
             }));
         }
-        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | plan-iso <ISO> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-alpine-virtual <verified-Alpine-virt-3.24.1-or-3.24.2-x86_64.iso> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
+        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | inspect-windows-iso <ISO> | stage-windows-virtual-cdrom <supported-plain-ISO9660-ISO> <existing-output-directory> | plan-iso <ISO> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-alpine-virtual <verified-Alpine-virt-3.24.1-or-3.24.2-x86_64.iso> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
     }
     Ok(())
 }

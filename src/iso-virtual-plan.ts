@@ -10,6 +10,9 @@ export type VirtualIsoPlan = {
   fileCount: number;
   totalBytes: number;
   samplePaths: string[];
+  windowsInstallPayload: 'WIM' | 'ESD' | 'missing' | null;
+  windowsPayloadBytes: number | null;
+  windowsUdfSignatureObserved: boolean;
   reason: string;
 };
 type IsoRecord = { name:string; offset:number; length:number; isDirectory:boolean };
@@ -71,7 +74,17 @@ export async function inspectVirtualIsoPlan(file:File):Promise<VirtualIsoPlan> {
   const used=new Set<string>(),names=new Set<string>();
   const regions:[number,number][]=[[16*BLOCK,20*BLOCK]];
   const paths:string[]=[];
+  const files:{path:string,length:number}[]=[];
+  let extractionSafe=true;
   let totalBytes=0;
+  let udfBegin=false, udfObserved=false;
+  for(let lba=16;lba<64 && (lba+1)*BLOCK<=file.size;lba++){
+    const b=await read(file,lba*BLOCK,6);
+    const name=String.fromCharCode(...b.subarray(1,6));
+    if(name==='BEA01')udfBegin=true;
+    else if(udfBegin && (name==='NSR02' || name==='NSR03'))udfObserved=true;
+    else if(name==='TEA01')udfBegin=false;
+  }
   while(pending.length){
     const [prefix,start,size,depth]=pending.pop()!;
     if(depth>8 || size<=0 || size>1048576 || used.has(start+':'+size))
@@ -92,16 +105,19 @@ export async function inspectVirtualIsoPlan(file:File):Promise<VirtualIsoPlan> {
       const path=prefix?prefix+'/'+entry.name:entry.name;
       if(path.length>240 || names.has(path))throw new Error('ISO path alias or duplicate name.');
       names.add(path);
-      if(names.size>MAX_FILES)throw new Error('ISO directory entry count exceeds bounded planner limit.');
+      if(names.size>4096)throw new Error('ISO directory entry count exceeds bounded metadata-only planner limit.');
+      if(names.size>MAX_FILES)extractionSafe=false;
       if(entry.isDirectory){
         if(depth>=8)throw new Error('ISO path depth exceeds supported limit.');
         pending.push([path,entry.offset,entry.length,depth+1]);
       } else {
-        if(entry.length>MAX_FILE)throw new Error('ISO file exceeds bounded extraction limit.');
+        if(entry.length>MAX_FILE)extractionSafe=false;
         totalBytes+=entry.length;
-        if(totalBytes>MAX_TREE || paths.length>=MAX_FILES)
-          throw new Error('ISO content exceeds bounded virtual image limits.');
+        if(!Number.isSafeInteger(totalBytes) || totalBytes>file.size)
+          throw new Error('ISO file sizes exceed the image bounds.');
+        if(totalBytes>MAX_TREE || paths.length>=MAX_FILES)extractionSafe=false;
         paths.push(path);
+        files.push({path,length:entry.length});
         if(entry.length)regions.push([entry.offset,entry.offset+entry.length]);
       }
     }
@@ -116,11 +132,19 @@ export async function inspectVirtualIsoPlan(file:File):Promise<VirtualIsoPlan> {
   const efi=namesSet.has('EFI/BOOT/BOOTX64.EFI');
   const profile=windows?'windows_install_candidate':linux?'linux_distribution_candidate':
     efi?'efi_application_virtual_only':'unsupported_boot_layout';
-  const virtualEfiEligible=efi && !windows && !linux && file.size<=256*1048576;
-  const reason=windows?'Windows installer candidate: WIM/ESD, bootloader and Setup not qualified; conversion disabled.':
+  const virtualEfiEligible=efi && !windows && !linux && extractionSafe && !udfObserved && file.size<=256*1048576;
+  const installWim=files.find(f=>f.path==='SOURCES/INSTALL.WIM');
+  const installEsd=files.find(f=>f.path==='SOURCES/INSTALL.ESD');
+  const windowsInstallPayload=windows ? installWim && !installEsd?'WIM' :
+    installEsd && !installWim?'ESD':'missing' : null;
+  const windowsPayloadBytes=windows ? installWim?.length ?? installEsd?.length ?? null : null;
+  const reason=windows?(udfObserved ?
+    'Windows installer candidate with UDF signature: UDF metadata, WIM splitting and Windows Setup boot remain unqualified. Native staging refuses UDF.' :
+    'Windows installer layout candidate: native WIM/ESD header validation is required before developer-only virtual CD-ROM staging. Windows Setup boot and physical writing remain unverified.') :
     linux?'Linux candidate: distribution bootloader/kernel/hybrid ISO profile not qualified; conversion disabled.':
     virtualEfiEligible?'Small x64 EFI layout: eligible for developer-only file-backed virtual conversion, not physical USB.':
     'No qualifying x64 EFI application or virtual image capacity exceeds supported limits.';
   return {profile,virtualEfiEligible,physicalWriteAuthorized:false,windowsSetupVerified:false,
-    linuxBootVerified:false,fileCount:paths.length,totalBytes,samplePaths:paths.slice(0,8),reason};
+    linuxBootVerified:false,fileCount:paths.length,totalBytes,samplePaths:paths.slice(0,8),
+    windowsInstallPayload,windowsPayloadBytes,windowsUdfSignatureObserved:udfObserved,reason};
 }

@@ -255,6 +255,10 @@ Read-only ISO planning and small ISO9660 x64 EFI extraction to a GPT/FAT32 **reg
 
 The developer-only `build-hybrid-virtual` command performs sector-perfect anonymous-file copying for a strictly constrained ISO9660 + BootNexa-layout GPT/FAT32 dual-format fixture. Whole-file SHA-256, GPT CRC, matched ISO/ESP EFI payload and QEMU/OVMF synthetic boot checks are required. This does **not** support arbitrary Linux ISO installation media or physical USB writes. Details: [hybrid ISO virtual proof](doc/HYBRID-ISO-VIRTUAL-PROOF.md).
 
+### Windows Setup ISO metadata and virtual CD-ROM staging (Phase 8 experimental)
+
+The developer-only `inspect-windows-iso` and `stage-windows-virtual-cdrom` commands validate bounded ISO9660, outer WIM/ESD headers, x64 EFI PE headers and optical-boot catalogs, then optionally create a new bit-exact **regular-file virtual ISO** with full SHA-256 read-back. The browser shows Windows payload metadata and UDF limitations. **No real Windows Setup boot, UDF traversal, WIM splitting, virtual USB disk, installer customization or physical USB write is implemented.** A Windows Setup-shaped synthetic test image is not a genuine installer. See [Windows ISO Phase 8 scope and remaining gates](doc/WINDOWS-ISO-VIRTUAL-PREFLIGHT.md).
+
 ### Exact-release Alpine Linux virtual ISO preflight (experimental)
 
 The developer-only build-alpine-virtual CLI accepts only the exact SHA-256 pinned Alpine virt 3.24.1 and 3.24.2 x86_64 ISOs, validates each ISO's real MBR EFI partition and bootloader using bounded read-only FAT I/O, then exports a sector-identical virtual .img with independent SHA-256 read-back. It never opens USB storage or executes an installer. Both exact versions have independently booted to serial-login in QEMU/OVMF in GitHub Actions PR #27, run #39915670601; this does not establish physical USB compatibility. See [Alpine virtual-image qualification](doc/ALPINE-VIRTUAL-QUALIFICATION.md).

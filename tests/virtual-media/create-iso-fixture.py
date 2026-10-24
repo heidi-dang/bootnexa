@@ -8,7 +8,7 @@ import struct
 P = argparse.ArgumentParser()
 P.add_argument("efi", type=Path)
 P.add_argument("output", type=Path)
-P.add_argument("--profile", choices=("efi", "windows", "linux"), default="efi")
+P.add_argument("--profile", choices=("efi", "windows", "windows-preflight", "linux"), default="efi")
 args = P.parse_args()
 
 efi = args.efi.read_bytes()
@@ -80,13 +80,34 @@ directory(24,[record(24,2048,b"\x00",True),
     record(23,2048,b"\x01",True),
     record(64,len(efi),b"BOOTX64.EFI;1")])
 if args.profile != "efi":
-    folder = b"SOURCES" if args.profile=="windows" else b"CASPER"
-    name=b"BOOT.WIM;1" if args.profile=="windows" else b"VMLINUZ;1"
+    folder = b"SOURCES" if args.profile.startswith("windows") else b"CASPER"
+    name=b"BOOT.WIM;1" if args.profile.startswith("windows") else b"VMLINUZ;1"
     root_entries.append(record(26,2048,folder,True))
     directory(26,[record(26,2048,b"\x00",True),
         record(22,2048,b"\x01",True),
         record(61,16,name)])
-    put_sector(61,b"INCOMPLETE-TEST!!")
+    if args.profile == "windows-preflight":
+        # These tiny fabricated MSWIM headers test only read-only parsing.
+        # They contain NO Windows code, payloads, licences or installable data.
+        def fake_wim_header():
+            b=bytearray(208)
+            b[:8]=b"MSWIM"+bytes(3)
+            b[8:12]=struct.pack("<I",208)
+            b[12:16]=struct.pack("<I",0x10d00)
+            b[40:42]=struct.pack("<H",1)
+            b[42:44]=struct.pack("<H",1)
+            b[44:48]=struct.pack("<I",1)
+            return b
+        directory(26,[record(26,2048,bytes([0]),True),
+            record(22,2048,bytes([1]),True),
+            record(61,208,b"BOOT.WIM;1"),
+            record(62,208,b"INSTALL.WIM;1")])
+        put_sector(61,fake_wim_header())
+        put_sector(62,fake_wim_header())
+        root_entries.append(record(63,256,b"SETUP.EXE;1"))
+        put_sector(63,b"MZ"+bytes(254))
+    else:
+        put_sector(61,b"INCOMPLETE-TEST!!")
 directory(22,root_entries)
 args.output.write_bytes(image)
 print(f"Synthetic valid ISO9660 test fixture: {args.output} ({len(image)} bytes); profile={args.profile}")
