@@ -40,10 +40,12 @@ jobs:
       - name: Install wimlib verification engine (open-source, no Microsoft media)
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends wimtools
+          sudo apt-get install -y --no-install-recommends wimtools 7zip
           wimlib-imagex --version
       - name: Verify synthetic WIM splitting, large sparse FAT32 SWM staging, 192 MiB readback and refusals
         run: python3 tests/virtual-media/verify-swm-split.py
+      - name: Verify publisher SHA lookup parser and complete ISO file SHA manifest without extraction
+        run: python3 tests/virtual-media/verify-windows-iso-publisher-manifest.py
 
   uefi_boot:
     runs-on: ubuntu-latest

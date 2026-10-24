@@ -60,6 +60,10 @@ The Linux-only `stage-large-windows-swm-demo <1-24-GiB> <verified-swm-directory>
 
 This closes an integration gap between real-format SWM verification and the multi-GiB-capacity anonymous disk. **It does not stage an official ISO, lift the per-part budgets to genuine install.wim size, export the large disk, or prove Windows Setup bootability.** Full disk SHA-256, publisher provenance, UEFI boot, and physical USB writing remain unverified or disabled.
 
+## Official ISO full-file manifest foundation
+
+An independently source-verified, read-only official Microsoft ISO intake now exists for supported English x64 locales, with a pinned Microsoft HTTPS checksum table, bounded 7-Zip ISO/UDF listing, SHA-256 hashing of every real file by streaming to stdout, source-before/source-after verification and a local private manifest. The QEMU acceptance harness can optionally independently re-check Microsoft's live checksum immediately before guest boot. There was no official Microsoft ISO available in the qualification workspace. Full-size Windows installer creation and genuine Windows Setup boot remain unverified. See [official ISO acceptance and command sequence](WINDOWS-OFFICIAL-ISO-ACCEPTANCE.md).
+
 ## Remaining Windows installer exit gates
 
 1. **Provenance:** obtain an unmodified and appropriately licensed official Microsoft Windows 11 ISO outside the repository, record its publisher-provided digest, language, edition, size and acquisition URL/date. No official Microsoft installer binary may be included in repo fixtures or distributed with this project.

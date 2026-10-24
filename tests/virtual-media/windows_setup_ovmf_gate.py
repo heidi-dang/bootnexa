@@ -167,11 +167,16 @@ def qmp_snapshot(socket_path, filename):
     return True
 
 
-def run_gate(iso, expected, parent, seconds, preflight_only=False):
+def run_gate(iso, expected, parent, seconds, preflight_only=False, publisher_reference=None):
     if not 30 <= seconds <= 600:
         raise Rejected("VM runtime must be 30 to 600 seconds")
     parent=strict_dir(parent)
     report=preflight(iso,expected)
+    if publisher_reference is not None:
+        if report["isoSha256"]!=publisher_reference["referenceSha256"]:
+            raise Rejected("ISO bytes do not match independent live Microsoft checksum")
+    report["publisherChecksumMatched"]=publisher_reference is not None
+    report["publisherChecksumReference"]=publisher_reference
     src=regular_file(iso)
     code,vars_template=firmware() if not preflight_only else (None,None)
     if not preflight_only and shutil.which("qemu-system-x86_64") is None:
@@ -278,10 +283,16 @@ def main():
     p.add_argument("--evidence-parent",type=Path,required=True)
     p.add_argument("--seconds",type=int,default=180)
     p.add_argument("--preflight-only",action="store_true")
+    p.add_argument("--microsoft-locale",choices=("English International 64-bit","English 64-bit"),
+                   help="fetch exact live Microsoft.com language checksum and require a match")
     args=p.parse_args()
     try:
+        official_reference=None
+        if args.microsoft_locale:
+            import windows_iso_publisher_manifest as publisher
+            official_reference=publisher.fetch_publisher_reference(args.microsoft_locale)
         result=run_gate(args.iso,args.sha256,args.evidence_parent,
-                        args.seconds,args.preflight_only)
+                        args.seconds,args.preflight_only,official_reference)
     except (Rejected,OSError,subprocess.SubprocessError) as exc:
         print("DENIED: "+str(exc),file=sys.stderr)
         return 1
