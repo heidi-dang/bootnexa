@@ -63,6 +63,29 @@ class SetupGateTest(unittest.TestCase):
                 gate.strict_dir(dest)
             self.assertEqual(len(list(parent.glob("bootnexa-win-acceptance-*"))),0)
 
+    def test_publisher_checksum_mismatch_refused_before_evidence(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            iso=root/"sparse-descriptor.iso"
+            with iso.open("wb") as f:
+                f.truncate(512*1024*1024)
+                f.seek(16*2048)
+                f.write(b"\x01CD001\x01")
+            with iso.open("rb") as f:
+                digest=hashlib.file_digest(f,"sha256").hexdigest()
+            source={"locale":"English 64-bit","referenceSha256":"0"*64}
+            with self.assertRaises(gate.Rejected):
+                gate.run_gate(iso,digest,root,30,preflight_only=True,
+                              publisher_reference=source)
+            self.assertFalse(list(root.glob("bootnexa-win-acceptance-*")))
+            source["referenceSha256"]=digest
+            report=gate.run_gate(iso,digest,root,30,preflight_only=True,
+                                 publisher_reference=source)
+            self.assertTrue(report["publisherChecksumMatched"])
+            self.assertFalse(report["publisherProvenanceVerified"])
+            self.assertFalse(report["windowsSetupBootVerified"])
+            self.assertTrue(Path(report["evidenceDirectory"]).joinpath("evidence.json").exists())
+
     def test_command_has_only_readonly_iso_and_unix_monitor(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td)

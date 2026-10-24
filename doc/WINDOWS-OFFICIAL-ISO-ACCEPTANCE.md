@@ -1,0 +1,36 @@
+# Phase 8 — Official Windows 11 ISO acceptance gate
+
+## Trust boundary
+
+The new read-only intake verifies a legally acquired, locally stored Windows 11 ISO against the current locale-specific SHA-256 table fetched directly over verified HTTPS from Microsoft's official Australian download page:
+
+https://www.microsoft.com/en-au/software-download/windows11
+
+The publisher URL is pinned in code; non-Microsoft redirects, unknown locales, absent/ambiguous checksum rows, and mismatched ISO bytes fail closed. Only English 64-bit and English International 64-bit are enabled so far. Microsoft ISO download links are typically session-specific and expire. Bootnexa does not bypass that download flow, download proprietary media automatically, or embed Windows binaries. A matching hash proves agreement with Microsoft's published bytes for that locale; it does NOT independently prove edition, release/build, license, installer compatibility, or Windows Setup boot success.
+
+## Steps after obtaining an official image
+
+Install a trusted 7zip executable (7z). Create a private local evidence directory and run this command, replacing the local file path with the ISO downloaded using Microsoft's website:
+
+    mkdir -p "$HOME/bootnexa-windows-evidence"
+    python3 tests/virtual-media/windows_iso_publisher_manifest.py --iso /safe/local/Win11_x64.iso --locale "English International 64-bit" --evidence-parent "$HOME/bootnexa-windows-evidence"
+
+The intake retrieves the exact Microsoft locale row over certificate-validated HTTPS; computes the ISO SHA-256; lists all real ISO9660/UDF filesystem files with 7-Zip; streams every file directly to an SHA-256 hasher without writing file contents onto the host; hashes the complete original ISO again; and creates an access-restricted manifest.json with publisher reference URL, fetched-page hash, file sizes, full per-file SHA-256 values and failure-closed flags. The [BOOT] records shown by 7-Zip are synthetic optical boot views rather than ISO filesystem paths and are excluded from the file-name manifest; the complete-image SHA-256 still covers them.
+
+Default limits: ISO length 512 MiB to 24 GiB, at most 4096 files, a 240-byte path budget, 16 path components, individual files up to 16 GiB, and 24 GiB of total listed file bytes. Unsafe traversal paths, symlinks, ambiguous or case-conflicting names, unrecognized ISO formats and unsupported properties fail closed. Legitimate unusual UDF media may fail these conservative checks; do not weaken the gate to force an arbitrary image through.
+
+## Optional read-only QEMU evidence
+
+Once the official ISO passes full manifest validation, the existing QEMU/OVMF runner can independently recheck the live Microsoft checksum before booting the unmodified optical ISO:
+
+    python3 tests/virtual-media/windows_setup_ovmf_gate.py --iso /safe/local/Win11_x64.iso --sha256 <actual-64-char-ISO-SHA256> --microsoft-locale "English International 64-bit" --evidence-parent "$HOME/bootnexa-windows-evidence" --seconds 180
+
+This emulator has no guest networking or physical drives, uses private OVMF variables and bounded local QMP screenshots, and leaves publisherProvenanceVerified and windowsSetupBootVerified false pending further review. The optional publisherChecksumMatched value attests only a matching live Microsoft checksum, not a witnessed Windows Setup GUI. The current QEMU profile is not a production Windows 11 Secure Boot and TPM 2.0 qualification.
+
+## Synthetic CI and unresolved gates
+
+CI uses only a fake Windows-shaped optical ISO and a mocked checksum in its internal test helper. It verifies the 7-Zip file-listing/streaming implementation, the full-file manifest, source-before/source-after integrity, safety refusals, and the new QEMU publisher-hash mismatch gate. Synthetic CI never claims official publisher provenance or Windows Setup success.
+
+Remaining before genuine installer qualification: acquire and authenticate a real official Windows 11 ISO; verify its UDF and actual WIM/ESD resource data; safely stage and hash multi-gigabyte installer payloads (the current demo's 64 MiB per SWM and 256 MiB total limit is insufficient); export and independently verify a bootable virtual disk; test the complete OVMF/Secure Boot/TPM matrix; witness Windows Setup GUI and record the specific image/guest evidence. Physical USB operations remain disabled and require a separate authorization and hardware safety review.
+
+No official Windows 11 ISO was present in the engineering workspace during this milestone; no genuine Windows Setup boot has been claimed.
