@@ -33,6 +33,13 @@ jobs:
         run: python3 tests/virtual-media/verify-windows-preflight.py
       - name: Verify synthetic UDF file streaming, anonymous GPT FAT32 readback and negative safety gates
         run: python3 tests/virtual-media/verify-windows-udf-structure.py
+      - name: Install wimlib verification engine (open-source, no Microsoft media)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends wimtools
+          wimlib-imagex --version
+      - name: Verify valid synthetic WIM split/verify, FAT32 bounds and refusal cases
+        run: python3 tests/virtual-media/verify-swm-split.py
 
   uefi_boot:
     runs-on: ubuntu-latest

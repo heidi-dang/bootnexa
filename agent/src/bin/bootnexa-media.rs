@@ -6,7 +6,7 @@ use bootnexa_agent::{
     iso_inspect::inspect,
     iso_tree::{classify, enumerate},
     partition_layout::Scheme,
-    udf_structure, udf_tree,
+    swm_qualification, udf_structure, udf_tree,
     virtual_boot_media::VirtualBootMedia,
     windows_iso, windows_media_plan,
 };
@@ -113,6 +113,17 @@ fn run() -> Result<(), Box<dyn Error>> {
             let inspection = windows_iso::inspect(&mut input, metadata.len())?;
             let plan = windows_media_plan::plan(&inspection);
             println!("{}", json!({"inspection":inspection,"layoutPlan":plan}));
+        }
+        [op,source,parent] if op=="split-wim-virtual" =>{
+            let report=swm_qualification::qualify_split(
+                std::path::Path::new(source),std::path::Path::new(parent),3800)?;
+            println!("{}",serde_json::to_string(&report)?);
+        }
+        [op,source,parent,mib] if op=="split-wim-virtual" =>{
+            let target:u32=mib.parse()?;
+            let report=swm_qualification::qualify_split(
+                std::path::Path::new(source),std::path::Path::new(parent),target)?;
+            println!("{}",serde_json::to_string(&report)?);
         }
         [op, source] if op == "inspect-windows-iso" => {
             let mut source = File::open(source)?;
@@ -282,7 +293,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 "outputSha256":digest,"media":report
             }));
         }
-        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | inspect-udf-structure <UDF-ISO> | inspect-udf-tree <restricted-UDF-ISO> | inspect-windows-iso <ISO> | plan-windows-media <ISO> | stage-windows-virtual-cdrom <supported-plain-ISO9660-ISO> <existing-output-directory> | plan-iso <ISO> | build-udf-small-virtual <restricted-UDF-ISO> <real-output-directory> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-alpine-virtual <verified-Alpine-virt-3.24.1-or-3.24.2-x86_64.iso> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
+        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | inspect-udf-structure <UDF-ISO> | inspect-udf-tree <restricted-UDF-ISO> | split-wim-virtual <WIM> <existing-output-directory> [part-size-MiB] | inspect-windows-iso <ISO> | plan-windows-media <ISO> | stage-windows-virtual-cdrom <supported-plain-ISO9660-ISO> <existing-output-directory> | plan-iso <ISO> | build-udf-small-virtual <restricted-UDF-ISO> <real-output-directory> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-alpine-virtual <verified-Alpine-virt-3.24.1-or-3.24.2-x86_64.iso> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
     }
     Ok(())
 }

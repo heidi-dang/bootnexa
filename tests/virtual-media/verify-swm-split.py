@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Exercise real open-source wimlib verification/splitting with synthetic files.
+
+Runs without Microsoft's Windows images. Outputs are regular files only.
+"""
+from pathlib import Path
+import hashlib
+import json
+import os
+import random
+import subprocess
+import sys
+import tempfile
+
+cli=Path(sys.argv[1] if len(sys.argv)>1 else "agent/target/debug/bootnexa-media").resolve()
+wimlib="wimlib-imagex"
+
+def run(*args):
+    return subprocess.run([str(x) for x in args],capture_output=True,text=True)
+
+def digest(path):
+    with Path(path).open("rb") as source:
+        return hashlib.file_digest(source,"sha256").hexdigest()
+
+with tempfile.TemporaryDirectory(prefix="bootnexa-swm-fixture-") as tmp:
+    root=Path(tmp)
+    raw=root/"synthetic-files"
+    raw.mkdir()
+    prng=random.Random(0xB007)
+    for i in range(14):
+        (raw/f"fixture-{i:02d}.bin").write_bytes(prng.randbytes(320*1024))
+    source=root/"synthetic.wim"
+    capture=run(wimlib,"capture",raw,source,"BootNexa synthetic test image","--compress=LZX")
+    assert capture.returncode==0,capture.stderr
+    verified=run(wimlib,"verify",source)
+    assert verified.returncode==0,verified.stderr
+    before=digest(source)
+    result=run(cli,"split-wim-virtual",source,root,"1")
+    assert result.returncode==0,(result.stderr,result.stdout)
+    receipt=json.loads(result.stdout)
+    assert receipt["virtualOnly"] is True
+    assert receipt["physicalWriteAuthorized"] is False
+    assert receipt["installerCompatibleVerified"] is False
+    assert receipt["windowsSetupBootVerified"] is False
+    assert receipt["splitWimIntegrityVerified"] is True
+    assert receipt["allPartsFitFat32"] is True
+    assert receipt["sourceSha256"]==before==digest(source)
+    parts=receipt["parts"]
+    assert len(parts)>=2,parts
+    directory=Path(receipt["outputDirectory"])
+    assert directory.parent==root and directory.is_dir()
+    for i,part in enumerate(parts):
+        expected="install.swm" if i==0 else f"install{i+1}.swm"
+        assert part["filename"]==expected
+        swm=directory/expected
+        assert swm.is_file() and not swm.is_symlink()
+        assert swm.stat().st_size==part["bytes"]
+        assert part["sha256"]==digest(swm)
+        assert 0<part["bytes"]<=0xffffffff
+    assert run(wimlib,"verify",directory/"install.swm",
+               f"--ref={directory}/install*.swm").returncode==0
+    print(f"PASS real wimlib captured, split, verified {len(parts)} SWM files from synthetic WIM")
+    print("PASS source-before-after, per-part readback SHA-256 and FAT32 limits")
+
+    anchor=root/"existing-marker.txt"
+    anchor.write_text("unmodified")
+    bad=root/"invalid.wim"
+    bad.write_bytes(b"MSWIM-not-valid")
+    count=lambda:len(list(root.glob("bootnexa-swm-*")))
+    prior=count()
+    for name,argv in [
+        ("invalid-wim",[bad,root,"1"]),
+        ("zero-size",[source,root,"0"]),
+        ("over-3800",[source,root,"3801"]),
+    ]:
+        call=run(cli,"split-wim-virtual",*argv)
+        assert call.returncode!=0,(name,call.stdout)
+        assert count()==prior,name
+        print(f"PASS denies {name} without leaving partial output")
+    symlink=root/"redirected-output"
+    symlink.symlink_to(root,target_is_directory=True)
+    assert run(cli,"split-wim-virtual",source,symlink,"1").returncode!=0
+    symlink_source=root/"linked.wim"
+    symlink_source.symlink_to(source)
+    assert run(cli,"split-wim-virtual",symlink_source,root,"1").returncode!=0
+    assert anchor.read_text()=="unmodified"
+    print("PASS rejects symlink input/output and preserves pre-existing files")
+print("PASS signed-off synthetic WIM/SWM-only CI contract (no Setup-boot claims)")

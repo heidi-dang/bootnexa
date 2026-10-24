@@ -44,6 +44,10 @@ New adversarial tests exercise fragmented two-extent source files, CRC-valid ove
 
 The outer WIM/ESD header parser also bounds its lookup-table, XML, boot-metadata and integrity-table resource ranges, requiring in-file offsets and non-overlapping physical ranges. This **does not** decompress resources, check their cryptographic hashes, validate WIM edition/image metadata, or create valid split `.swm` files. The older Windows preflight and media feasibility planner still report Windows boot and large-install-payload support as unqualified.
 
+## Latest Phase 8 increment — wimlib SWM artifact qualification
+
+The developer-only `split-wim-virtual` command invokes a trusted installed wimlib verifier against a regular WIM file, produces new `install*.swm` files and re-verifies the full split archive. Independent checks enforce actual per-part FAT32 file limits and SHA-256 read-back; failures do not leave partial artifact directories on normal controlled paths. This does **not** generate a real Windows bootable disk or establish Windows Setup bootability. See [WIM/SWM proof and remaining guest-boot gates](WINDOWS-SWM-SETUP-QUALIFICATION.md).
+
 ## Remaining to complete Phase 8
 
 1. Expand the restricted read-only UDF FID tree parser beyond ASCII and short/long allocation extents: normalize non-ASCII compressed Unicode, handle separately-qualified Extended File Entries, robust UDF 1.02/2.01 cases, and fuzz against real UDF images. Restricted small-file UDF source streaming and virtual FAT32 read-back now exist, but full UDF compatibility and real Microsoft Windows Setup boot, plus independent WIM/ESD resource integrity, remain unqualified.
