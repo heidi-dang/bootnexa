@@ -31,6 +31,8 @@ jobs:
         run: cargo build --locked --manifest-path agent/Cargo.toml --bin bootnexa-media
       - name: Qualify synthetic-only Windows preflight, SHA readback, and adversarial denials
         run: python3 tests/virtual-media/verify-windows-preflight.py
+      - name: Verify synthetic UDF descriptor chain and Windows FAT32 planning without write access
+        run: python3 tests/virtual-media/verify-windows-udf-structure.py
 
   uefi_boot:
     runs-on: ubuntu-latest
