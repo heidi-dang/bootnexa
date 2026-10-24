@@ -53,6 +53,11 @@ with tempfile.TemporaryDirectory(prefix="bootnexa-win-evidence-ci-") as folder:
     assert receipt["hostDiskAttached"] is False
     assert receipt["bootAttempted"] is True
     assert receipt["isoUnchangedAfterVm"] is True
+    if not receipt["graphicalCaptureSucceeded"]:
+        log=evidence/"qemu.log"
+        print("QEMU startup/capture diagnostic:",log.read_text(errors="replace")[-2000:] if log.exists() else "missing log",file=sys.stderr)
+        print("QEMU termination facts:",{k:receipt.get(k) for k in
+              ("qemuExitCode","qemuExitedEarly","qemuElapsedSeconds","failure")},file=sys.stderr)
     assert receipt["graphicalCaptureSucceeded"] is True
     assert len(receipt["screenshots"])>=1
     for captured in receipt["screenshots"]:
