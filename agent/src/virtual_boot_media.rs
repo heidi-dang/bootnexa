@@ -452,6 +452,184 @@ impl VirtualBootMedia {
             verified_bytes: total,
         })
     }
+    /// Synthetic, small-file proof that verified WIM/SWM artifacts can be
+    /// placed in a GPT/FAT32 virtual disk. No Windows Setup proof or devices.
+    pub fn populate_windows_swm_demo(
+        &mut self,
+        source_root: &std::path::Path,
+        swm_dir: &std::path::Path,
+    ) -> Result<IsoCopyReport, MediaError> {
+        use crate::swm_qualification::{verify_existing_split, verify_existing_wim};
+        use std::path::{Path, PathBuf};
+        const MAX_FILE: u64 = 48 * 1024 * 1024;
+        const MAX_TOTAL: u64 = 80 * 1024 * 1024;
+        // Source directory components must not be symlink aliases or devices.
+        for dir in [
+            source_root.to_path_buf(),
+            source_root.join("EFI"),
+            source_root.join("EFI/BOOT"),
+            source_root.join("SOURCES"),
+            swm_dir.to_path_buf(),
+        ] {
+            if !std::fs::symlink_metadata(dir)?.file_type().is_dir() {
+                return Err(MediaError::Corrupt);
+            }
+        }
+        let boot_wim = source_root.join("SOURCES/BOOT.WIM");
+        let boot = verify_existing_wim(&boot_wim, MAX_FILE).map_err(|_| MediaError::Corrupt)?;
+        let split = verify_existing_split(swm_dir).map_err(|_| MediaError::Corrupt)?;
+        if split.len() < 2 || split.len() > 16 {
+            return Err(MediaError::Capacity);
+        }
+        let mut sources = vec![
+            (
+                String::from("EFI/BOOT/BOOTX64.EFI"),
+                source_root.join("EFI/BOOT/BOOTX64.EFI"),
+            ),
+            (String::from("SETUP.EXE"), source_root.join("SETUP.EXE")),
+            (String::from("SOURCES/BOOT.WIM"), boot_wim),
+        ];
+        for p in &split {
+            sources.push((format!("SOURCES/{}", p.filename), swm_dir.join(&p.filename)));
+        }
+        // Hash only regular files opened via fixed generated pathnames.
+        fn fingerprint(path: &Path, limit: u64) -> Result<(u64, String), MediaError> {
+            if !std::fs::symlink_metadata(path)?.file_type().is_file() {
+                return Err(MediaError::Corrupt);
+            }
+            let mut stream = File::open(path)?;
+            let length = stream.metadata()?.len();
+            if length == 0 || length > limit {
+                return Err(MediaError::Capacity);
+            }
+            let mut sha = Sha256::new();
+            let mut left = length;
+            let mut buffer = [0u8; 65536];
+            while left > 0 {
+                let n = left.min(buffer.len() as u64) as usize;
+                stream.read_exact(&mut buffer[..n])?;
+                sha.update(&buffer[..n]);
+                left -= n as u64;
+            }
+            if stream.read(&mut buffer[..1])? != 0 {
+                return Err(MediaError::Corrupt);
+            }
+            Ok((length, hex::encode(sha.finalize())))
+        }
+        let mut inventory = Vec::<(String, PathBuf, u64, String)>::new();
+        let mut total = 0u64;
+        for (target, path) in sources {
+            let (size, sha) = fingerprint(&path, MAX_FILE)?;
+            total = total.checked_add(size).ok_or(MediaError::Capacity)?;
+            if total > MAX_TOTAL {
+                return Err(MediaError::Capacity);
+            }
+            if target == "SOURCES/BOOT.WIM" && (sha != boot.sha256 || size != boot.bytes) {
+                return Err(MediaError::Corrupt);
+            }
+            if let Some(part) = split
+                .iter()
+                .find(|p| target == format!("SOURCES/{}", p.filename))
+                && (part.sha256 != sha || part.bytes != size)
+            {
+                return Err(MediaError::Corrupt);
+            }
+            inventory.push((target, path, size, sha));
+        }
+        // Check EFI structure before allocating/copying any media payload.
+        let efi = inventory
+            .iter()
+            .find(|p| p.0 == "EFI/BOOT/BOOTX64.EFI")
+            .ok_or(MediaError::Corrupt)?;
+        if !(256..=MAX_PAYLOAD as u64).contains(&efi.2) {
+            return Err(MediaError::Capacity);
+        }
+        let mut efi_bytes = Vec::new();
+        File::open(&efi.1)?
+            .take(MAX_PAYLOAD as u64 + 1)
+            .read_to_end(&mut efi_bytes)?;
+        if efi_bytes.len() != efi.2 as usize {
+            return Err(MediaError::Corrupt);
+        }
+        // Writes only to the existing anonymous FileSystem / PartitionView.
+        {
+            let view = PartitionView::new(&mut self.file, &self.layout);
+            let fs = FileSystem::new(view, FsOptions::new())?;
+            if fs.fat_type() != FatType::Fat32 {
+                return Err(MediaError::Corrupt);
+            }
+            let root = fs.root_dir();
+            root.create_dir("EFI")?.create_dir("BOOT")?;
+            root.create_dir("SOURCES")?;
+            for (target, path, size, expected) in &inventory {
+                let mut src = File::open(path)?;
+                let mut file = root.create_file(target)?;
+                let mut sha = Sha256::new();
+                let mut left = *size;
+                let mut buf = [0u8; 65536];
+                while left > 0 {
+                    let n = left.min(buf.len() as u64) as usize;
+                    src.read_exact(&mut buf[..n])?;
+                    file.write_all(&buf[..n])?;
+                    sha.update(&buf[..n]);
+                    left -= n as u64;
+                }
+                if src.read(&mut buf[..1])? != 0 || hex::encode(sha.finalize()) != *expected {
+                    return Err(MediaError::Corrupt);
+                }
+                file.flush()?;
+            }
+            drop(root);
+            fs.unmount()?;
+        }
+        self.file.sync_all()?;
+        verify_partition_table(&mut self.file, &self.layout)?;
+        // Source-after and independent FAT32 contents must match the initial
+        // expected SHA-256; any changed source is an integrity failure.
+        for (_target, path, size, expected) in &inventory {
+            if fingerprint(path, MAX_FILE)? != (*size, expected.clone()) {
+                return Err(MediaError::Corrupt);
+            }
+        }
+        {
+            let view = PartitionView::new(&mut self.file, &self.layout);
+            let fs = FileSystem::new(view, FsOptions::new())?;
+            if fs.fat_type() != FatType::Fat32 {
+                return Err(MediaError::Corrupt);
+            }
+            let root = fs.root_dir();
+            for (target, _, size, expected) in &inventory {
+                let mut file = root.open_file(target)?;
+                let mut sha = Sha256::new();
+                let mut left = *size;
+                let mut buf = [0u8; 65536];
+                while left > 0 {
+                    let n = left.min(buf.len() as u64) as usize;
+                    file.read_exact(&mut buf[..n])?;
+                    sha.update(&buf[..n]);
+                    left -= n as u64;
+                }
+                if file.read(&mut buf[..1])? != 0 || hex::encode(sha.finalize()) != *expected {
+                    return Err(MediaError::Corrupt);
+                }
+            }
+        }
+        if self.read_efi_application()? != efi_bytes {
+            return Err(MediaError::Corrupt);
+        }
+        Ok(IsoCopyReport {
+            virtual_only: true,
+            physical_write_authorized: false,
+            windows_setup_verified: false,
+            linux_boot_verified: false,
+            boot_execution_verified: false,
+            full_partition_table_verified: true,
+            source_files: inventory.len(),
+            verified_files: inventory.len(),
+            verified_bytes: total,
+        })
+    }
+
     /// Copy an entire explicitly supported ISO9660 file tree to an anonymous
     /// FAT32 virtual disk. Never accepts a host OS block device or file path.
     /// Windows/Linux installer candidates fail closed until independently

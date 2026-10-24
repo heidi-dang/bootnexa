@@ -114,6 +114,41 @@ fn run() -> Result<(), Box<dyn Error>> {
             let plan = windows_media_plan::plan(&inspection);
             println!("{}", json!({"inspection":inspection,"layoutPlan":plan}));
         }
+        [op,source,swm_dir,output_parent] if op=="build-windows-swm-demo" =>{
+            use std::path::Path;
+            let parent=Path::new(output_parent);
+            if !fs::symlink_metadata(parent)?.file_type().is_dir(){
+                return Err("demo output parent must be an existing real directory".into());
+            }
+            let destination_parent=fs::canonicalize(parent)?;
+            let mut disk=VirtualBootMedia::new(192*1024*1024,Scheme::Gpt)?;
+            let media=disk.populate_windows_swm_demo(Path::new(source),Path::new(swm_dir))?;
+            let path=destination_parent.join(format!("bootnexa-windows-swm-demo-{}.img",Uuid::new_v4().simple()));
+            let mut output=OpenOptions::new().read(true).write(true).create_new(true).open(&path)?;
+            let result=disk.export_to_regular_file(&mut output);
+            let digest=match result {
+                Ok(hash)=>{
+                    if output.metadata()?.len()!=192*1024*1024 {
+                        drop(output);
+                        let _=fs::remove_file(&path);
+                        return Err("virtual demo exported wrong number of bytes".into());
+                    }
+                    hash
+                }
+                Err(error)=>{
+                    drop(output);
+                    let _=fs::remove_file(&path);
+                    return Err(error.into());
+                }
+            };
+            println!("{}",json!({
+                "virtualOnly":true,"physicalWriteAuthorized":false,
+                "installerCompatibleVerified":false,"windowsSetupBootVerified":false,
+                "syntheticSmallFileDemonstrationOnly":true,
+                "diskBytes":192*1024*1024u64,"outputSha256":digest,
+                "outputPath":path.to_string_lossy(),"media":media
+            }));
+        }
         [op,source,parent] if op=="split-wim-virtual" =>{
             let report=swm_qualification::qualify_split(
                 std::path::Path::new(source),std::path::Path::new(parent),3800)?;
@@ -293,7 +328,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 "outputSha256":digest,"media":report
             }));
         }
-        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | inspect-udf-structure <UDF-ISO> | inspect-udf-tree <restricted-UDF-ISO> | split-wim-virtual <WIM> <existing-output-directory> [part-size-MiB] | inspect-windows-iso <ISO> | plan-windows-media <ISO> | stage-windows-virtual-cdrom <supported-plain-ISO9660-ISO> <existing-output-directory> | plan-iso <ISO> | build-udf-small-virtual <restricted-UDF-ISO> <real-output-directory> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-alpine-virtual <verified-Alpine-virt-3.24.1-or-3.24.2-x86_64.iso> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
+        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | inspect-udf-structure <UDF-ISO> | inspect-udf-tree <restricted-UDF-ISO> | split-wim-virtual <WIM> <existing-output-directory> [part-size-MiB] | build-windows-swm-demo <synthetic-source-directory> <verified-swm-directory> <existing-output-directory> | inspect-windows-iso <ISO> | plan-windows-media <ISO> | stage-windows-virtual-cdrom <supported-plain-ISO9660-ISO> <existing-output-directory> | plan-iso <ISO> | build-udf-small-virtual <restricted-UDF-ISO> <real-output-directory> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-alpine-virtual <verified-Alpine-virt-3.24.1-or-3.24.2-x86_64.iso> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
     }
     Ok(())
 }
