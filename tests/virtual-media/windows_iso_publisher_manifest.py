@@ -229,15 +229,47 @@ def parse_listing(raw, iso, length):
     return entries,skipped
 
 def listing(iso,exe,size):
+    # Bound pipe capture *while reading*, not after unbounded communicate().
+    proc=subprocess.Popen(
+        [exe,"l","-slt","-bd","-spd",str(iso)],
+        stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    selector=selectors.DefaultSelector()
+    selector.register(proc.stdout,selectors.EVENT_READ)
+    selector.register(proc.stderr,selectors.EVENT_READ)
+    chunks=[]
+    stdout_bytes=0
+    stderr_bytes=0
+    started=time.monotonic()
     try:
-        result=subprocess.run([exe,"l","-slt","-bd","-spd",str(iso)],
-                              stdin=subprocess.DEVNULL,capture_output=True,
-                              timeout=180)
-    except subprocess.TimeoutExpired as e:
-        raise Rejected("ISO inventory exceeded listing timeout") from e
-    if result.returncode!=0 or len(result.stdout)>MAX_LISTING or len(result.stderr)>65536:
-        raise Rejected("ISO inventory decoder failed or exceeded byte budget")
-    return parse_listing(result.stdout,iso,size)
+        while selector.get_map():
+            if time.monotonic()-started>180:
+                raise Rejected("ISO inventory exceeded listing timeout")
+            for key,_ in selector.select(timeout=1):
+                data=os.read(key.fileobj.fileno(),BUFSIZE)
+                if not data:
+                    selector.unregister(key.fileobj)
+                    continue
+                if key.fileobj is proc.stdout:
+                    stdout_bytes+=len(data)
+                    if stdout_bytes>MAX_LISTING:
+                        raise Rejected("ISO inventory exceeds bounded memory budget")
+                    chunks.append(data)
+                else:
+                    stderr_bytes+=len(data)
+                    if stderr_bytes>65536:
+                        raise Rejected("ISO inventory stderr exceeds bounded memory budget")
+        if proc.wait(timeout=3)!=0:
+            raise Rejected("ISO inventory decoder rejected optical image")
+    except (OSError,subprocess.TimeoutExpired) as e:
+        raise Rejected("ISO inventory tool failed or stalled") from e
+    finally:
+        selector.close()
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        proc.stdout.close()
+        proc.stderr.close()
+    return parse_listing(b"".join(chunks),iso,size)
 
 def streamed_entry_sha(exe,iso,name,expected,deadline):
     start=time.monotonic()
@@ -282,6 +314,8 @@ def streamed_entry_sha(exe,iso,name,expected,deadline):
         if proc.poll() is None:
             proc.kill()
             proc.wait()
+        proc.stdout.close()
+        proc.stderr.close()
     if counter!=expected:
         raise Rejected("extracted ISO byte count differs from listing")
     return sha.hexdigest()
