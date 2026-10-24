@@ -414,6 +414,33 @@ pub struct LargeSwmReceipt {
     pub staged_parts: Vec<crate::swm_qualification::SplitPart>,
 }
 
+/// Receipt for strictly bounded ISO-file bytes transferred via stdin into
+/// anonymous GPT/FAT32 partitions. Neither an installer disk nor boot proof.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IsoStreamReceipt {
+    pub virtual_only: bool,
+    pub physical_write_authorized: bool,
+    pub windows_setup_boot_verified: bool,
+    pub installer_compatible_verified: bool,
+    pub full_disk_sha256_verified: bool,
+    pub source_iso_unchanged_verified: bool,
+    pub gpt_integrity_verified: bool,
+    pub efi_fat32_verified: bool,
+    pub payload_fat32_verified: bool,
+    pub staged_file_count: usize,
+    pub staged_bytes: u64,
+    pub files: Vec<IsoStagedFile>,
+}
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IsoStagedFile {
+    pub path: String,
+    pub bytes: u64,
+    pub sha256: String,
+    pub partition: &'static str,
+    pub independent_fat32_readback_verified: bool,
+}
 pub struct LargeSparseDisk {
     file: File,
     b: Bounds,
@@ -460,6 +487,226 @@ impl LargeSparseDisk {
         };
         disk.verify()?;
         Ok(disk)
+    }
+    /// Consumes BNXI0001 framed, bounded ISO *test data* from stdin.
+    /// No device handles and no persisted disk; the caller must independently
+    /// re-verify the ISO and hashes before and after this transfer.
+    pub fn stage_iso_stream(
+        &mut self,
+        input: &mut impl Read,
+    ) -> Result<IsoStreamReceipt, MediaError> {
+        const MAX_FILE: u64 = 32 * 1024 * 1024;
+        const MAX_TOTAL: u64 = 128 * 1024 * 1024;
+        const MAX_COUNT: usize = 128;
+        if !self.payload_fat32 {
+            return Err(MediaError::Corrupt);
+        }
+        let original_gpt = verify_gpt(&mut self.file, self.b)?;
+        let mut magic = [0u8; 8];
+        input.read_exact(&mut magic)?;
+        if &magic != b"BNXI0001" {
+            return Err(MediaError::Corrupt);
+        }
+        let mut count_bytes = [0u8; 2];
+        input.read_exact(&mut count_bytes)?;
+        let count = usize::from(u16::from_le_bytes(count_bytes));
+        if !(4..=MAX_COUNT).contains(&count) {
+            return Err(MediaError::Capacity);
+        }
+        let mut seen = std::collections::HashSet::new();
+        let mut dirs = std::collections::HashSet::new();
+        let mut total = 0u64;
+        let mut staged = Vec::with_capacity(count);
+        for _ in 0..count {
+            let mut two = [0u8; 2];
+            input.read_exact(&mut two)?;
+            let len = usize::from(u16::from_le_bytes(two));
+            if len == 0 || len > 240 {
+                return Err(MediaError::Capacity);
+            }
+            let mut name = vec![0u8; len];
+            input.read_exact(&mut name)?;
+            let path = String::from_utf8(name).map_err(|_| MediaError::Corrupt)?;
+            let components = path.split('/').collect::<Vec<_>>();
+            if components.len() > 16
+                || components.iter().any(|s| {
+                    s.is_empty()
+                        || s.len() > 100
+                        || s.starts_with(['-', ' '])
+                        || s.ends_with(['.', ' '])
+                        || !s
+                            .bytes()
+                            .all(|c| c.is_ascii_alphanumeric() || b"._-".contains(&c))
+                        || matches!(
+                            s.split('.')
+                                .next()
+                                .unwrap_or("")
+                                .to_ascii_uppercase()
+                                .as_str(),
+                            "CON"
+                                | "PRN"
+                                | "AUX"
+                                | "NUL"
+                                | "COM1"
+                                | "COM2"
+                                | "COM3"
+                                | "COM4"
+                                | "COM5"
+                                | "COM6"
+                                | "COM7"
+                                | "COM8"
+                                | "COM9"
+                                | "LPT1"
+                                | "LPT2"
+                                | "LPT3"
+                                | "LPT4"
+                                | "LPT5"
+                                | "LPT6"
+                                | "LPT7"
+                                | "LPT8"
+                                | "LPT9"
+                        )
+                })
+            {
+                return Err(MediaError::Corrupt);
+            }
+            let folded = path.to_ascii_lowercase();
+            if !seen.insert(folded.clone()) || dirs.contains(&folded) {
+                return Err(MediaError::Corrupt);
+            }
+            let mut prefix = String::new();
+            for component in components.iter().take(components.len() - 1) {
+                if !prefix.is_empty() {
+                    prefix.push('/');
+                }
+                prefix.push_str(component);
+                let lower = prefix.to_ascii_lowercase();
+                if seen.contains(&lower) {
+                    return Err(MediaError::Corrupt);
+                }
+                dirs.insert(lower);
+            }
+            let mut bytes = [0u8; 8];
+            input.read_exact(&mut bytes)?;
+            let length = u64::from_le_bytes(bytes);
+            total = total.checked_add(length).ok_or(MediaError::Capacity)?;
+            if length > MAX_FILE || total > MAX_TOTAL {
+                return Err(MediaError::Capacity);
+            }
+            let mut digest = [0u8; 32];
+            input.read_exact(&mut digest)?;
+            let part_efi = components[0].eq_ignore_ascii_case("EFI");
+            let (base, limit) = if part_efi {
+                (self.b.esp_first * SECTOR, ESP_BYTES)
+            } else {
+                (
+                    self.b.data_first * SECTOR,
+                    (self.b.data_last - self.b.data_first + 1) * SECTOR,
+                )
+            };
+            let readback = {
+                let view = Region {
+                    file: &mut self.file,
+                    base,
+                    length: limit,
+                    pos: 0,
+                };
+                let fs = FileSystem::new(view, FsOptions::new())?;
+                if fs.fat_type() != FatType::Fat32 {
+                    return Err(MediaError::Corrupt);
+                }
+                let root = fs.root_dir();
+                let mut path_prefix = String::new();
+                for dir in components.iter().take(components.len() - 1) {
+                    if !path_prefix.is_empty() {
+                        path_prefix.push('/');
+                    }
+                    path_prefix.push_str(dir);
+                    if root.open_dir(&path_prefix).is_err() {
+                        root.create_dir(&path_prefix)?;
+                    }
+                }
+                if root.open_file(&path).is_ok() {
+                    return Err(MediaError::Corrupt);
+                }
+                let mut dest = root.create_file(&path)?;
+                let mut left = length;
+                let mut copy_sha = Sha256::new();
+                let mut buf = [0u8; 65536];
+                while left > 0 {
+                    let take = left.min(buf.len() as u64) as usize;
+                    input.read_exact(&mut buf[..take])?;
+                    dest.write_all(&buf[..take])?;
+                    copy_sha.update(&buf[..take]);
+                    left -= take as u64;
+                }
+                if copy_sha.finalize().as_slice() != digest {
+                    return Err(MediaError::Corrupt);
+                }
+                dest.flush()?;
+                drop(dest);
+                let mut verify = root.open_file(&path)?;
+                let mut left = length;
+                let mut sha = Sha256::new();
+                while left > 0 {
+                    let take = left.min(buf.len() as u64) as usize;
+                    verify.read_exact(&mut buf[..take])?;
+                    sha.update(&buf[..take]);
+                    left -= take as u64;
+                }
+                if verify.read(&mut buf[..1])? != 0 {
+                    return Err(MediaError::Corrupt);
+                }
+                let matched = sha.finalize().as_slice() == digest;
+                drop(verify);
+                drop(root);
+                fs.unmount()?;
+                matched
+            };
+            if !readback {
+                return Err(MediaError::Corrupt);
+            }
+            staged.push(IsoStagedFile {
+                path,
+                bytes: length,
+                sha256: hex::encode(digest),
+                partition: if part_efi { "efi" } else { "payload" },
+                independent_fat32_readback_verified: true,
+            });
+        }
+        let mut tail = [0u8; 1];
+        if input.read(&mut tail[..])? != 0 {
+            return Err(MediaError::Corrupt);
+        }
+        let upper = seen
+            .iter()
+            .map(|x| x.to_ascii_uppercase())
+            .collect::<std::collections::HashSet<_>>();
+        if !["EFI/BOOT/BOOTX64.EFI", "SOURCES/BOOT.WIM", "SETUP.EXE"]
+            .iter()
+            .all(|s| upper.contains(*s))
+            || upper.contains("SOURCES/INSTALL.WIM") == upper.contains("SOURCES/INSTALL.ESD")
+        {
+            return Err(MediaError::Corrupt);
+        }
+        if verify_gpt(&mut self.file, self.b)? != original_gpt {
+            return Err(MediaError::Corrupt);
+        }
+        let proof = self.verify()?;
+        Ok(IsoStreamReceipt {
+            virtual_only: true,
+            physical_write_authorized: false,
+            windows_setup_boot_verified: false,
+            installer_compatible_verified: false,
+            full_disk_sha256_verified: false,
+            source_iso_unchanged_verified: false,
+            gpt_integrity_verified: proof.primary_and_backup_gpt_verified,
+            efi_fat32_verified: proof.esp_fat32_verified,
+            payload_fat32_verified: proof.payload_fat32_verified,
+            staged_file_count: staged.len(),
+            staged_bytes: total,
+            files: staged,
+        })
     }
     /// Stream a locally supplied, format-valid synthetic EFI file into the
     /// anonymous FAT32 ESP and independently read it back. Source unchanged,

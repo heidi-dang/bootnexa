@@ -48,6 +48,8 @@ jobs:
         run: python3 tests/virtual-media/verify-windows-iso-publisher-manifest.py
       - name: Verify read-only Windows ISO manifest to 1/8/24 GiB GPT/FAT32 and WIM split feasibility plan
         run: python3 tests/virtual-media/verify-windows-installer-layout-plan.py
+      - name: Stream every synthetic ISO file directly to anonymous 1/8 GiB GPT/FAT32 with independent readback and refusals
+        run: python3 tests/virtual-media/verify-windows-iso-virtual-fat32-stream.py
 
   uefi_boot:
     runs-on: ubuntu-latest
