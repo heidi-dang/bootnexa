@@ -420,12 +420,12 @@ impl LargeSparseDisk {
             metadata_sha256,
         })
     }
-    #[cfg(test)]
+    #[cfg(all(test, target_os = "linux"))]
     fn overwrite_at(&mut self, offset: u64, data: &[u8]) -> Result<(), MediaError> {
         write_bytes(&mut self.file, offset, data)
     }
 }
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
     #[cfg(target_os = "linux")]
