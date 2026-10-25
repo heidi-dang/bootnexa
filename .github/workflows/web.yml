@@ -50,6 +50,8 @@ jobs:
         run: python3 tests/virtual-media/verify-windows-installer-layout-plan.py
       - name: Stream every synthetic ISO file directly to anonymous 1/8 GiB GPT/FAT32 with independent readback and refusals
         run: python3 tests/virtual-media/verify-windows-iso-virtual-fat32-stream.py
+      - name: Verify 48 MiB synthetic ISO file transfer and independent anonymous FAT32 readback
+        run: python3 tests/virtual-media/verify-windows-iso-stream-medium.py
 
   uefi_boot:
     runs-on: ubuntu-latest
