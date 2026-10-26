@@ -76,7 +76,19 @@ python3 tests/virtual-media/qualify-fullsize-swm-virtual.py \
   --disk-gib 16 --part-mib 3800
 ```
 
-**This operator-only more-than-4-GiB test has not been run or qualified.** It must not be promoted as Setup-compatible until actual resource verification, sustained stream/readback, authentic ISO context and a witnessed Windows Setup guest installation all pass separately.
+To generate a disposable, non-Microsoft >4-GiB source instead of supplying an operator WIM, run the following separate opt-in qualification. This test writes approximately 4.25 GiB of unique random source files, captures them into a genuine uncompressed WIM, performs the complete split and anonymous FAT32 SHA-256 readback, and removes only its own temporary scratch tree. Budget at least **4× the generated source bytes plus 6 GiB** on an existing, non-symlink scratch directory with plenty of free space; this is not a substitute for the native filesystem admission check.
+
+```sh
+BOOTNEXA_MEDIA_PROFILE=release python3 tests/virtual-media/qualify-generated-4gib-swm.py \
+  --scratch-parent /path/to/dedicated-large-scratch \
+  --size-mib 4352 --confirm-generate-over-4gib
+```
+
+Build the exact checked-out native tool first with `cargo build --release --locked --manifest-path agent/Cargo.toml --bin bootnexa-media`; the synthetic scale qualification refuses the slow debug build. The existing bounded CI profile still defaults to debug. The `BOOTNEXA_MEDIA_PROFILE` selector accepts only `debug` or `release` and resolves the corresponding repo build, never a user-supplied executable path.
+
+The generated fixture is not an official Windows installation image, and successful FAT32 copy/readback is not Windows Setup boot proof. The heavy test does **not** run in routine CI and requires an installed/trusted wimlib command, the native developer-only CLI, explicit scratch space and operator confirmation.
+
+**A genuine greater-than-4-GiB synthetic archive transfer passed once on 26 October 2026,** with the source and independent FAT32 readback hashes verified. See [measured synthetic full-size evidence](PHASE-8-FULLSIZE-SWM-SYNTHETIC-20261026.md). This does not qualify an official Microsoft installer ISO or a genuine Windows Setup guest boot. It must not be promoted as Setup-compatible until actual resource verification, sustained stream/readback, authentic ISO context and a witnessed Windows Setup guest installation all pass separately.
 
 ## Official ISO full-file manifest foundation
 

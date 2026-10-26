@@ -20,7 +20,13 @@ GIB = 1024**3
 MAX_SOURCE = 16 * GIB
 MAX_SPLIT = 16 * GIB
 MAX_FAT32_FILE = 2**32 - 1
-CLI = Path("agent/target/debug/bootnexa-media").resolve()
+def selected_cli_build(profile):
+    if profile not in ("debug", "release"):
+        raise Refused("unsupported native media build profile")
+    return Path(f"agent/target/{profile}/bootnexa-media").resolve()
+
+
+CLI = selected_cli_build(os.environ.get("BOOTNEXA_MEDIA_PROFILE", "debug"))
 
 
 class Refused(ValueError):
@@ -100,6 +106,7 @@ def qualify(source, expected, scratch_parent, disk_gib=16, part_mib=3800):
     before = sha256(source)
     if before != expected.lower():
         raise Refused("source WIM SHA-256 does not match operator-provided digest")
+    print("FULLSIZE: source SHA-256 verified; splitting format-valid WIM", file=sys.stderr, flush=True)
     # Only the newly created scratch tree is removed on exit/failure.
     # No pre-existing files in scratch_parent are modified.
     with tempfile.TemporaryDirectory(prefix="bootnexa-optin-fullsize-", dir=scratch_parent) as td:
@@ -123,8 +130,11 @@ def qualify(source, expected, scratch_parent, disk_gib=16, part_mib=3800):
                     not re.fullmatch("[a-f0-9]{64}", part.get("sha256", ""))):
                 raise Refused("invalid SWM manifest part")
             total += part["bytes"]
+        if total <= 4*GIB:
+            raise Refused("actual SWM payload is not greater than 4 GiB")
         if total > MAX_SPLIT:
             raise Refused("split archive exceeds 16 GiB staging budget")
+        print("FULLSIZE: archive split and manifest verified; staging to anonymous FAT32", file=sys.stderr, flush=True)
         split_dir = Path(split["outputDirectory"])
         if split_dir.parent != Path(td) or split_dir.is_symlink():
             raise Refused("untrusted SWM split output directory")
@@ -147,6 +157,7 @@ def qualify(source, expected, scratch_parent, disk_gib=16, part_mib=3800):
                 raise Refused("unsupported installation claim")
         if sha256(source) != before:
             raise Refused("WIM source changed during staged transfer")
+        print("FULLSIZE: independent FAT32 SHA-256 and unchanged source verified", file=sys.stderr, flush=True)
         return {
             "schema": "bootnexa-optin-fullsize-swm-virtual-v1",
             "syntheticOrOperatorSuppliedWimSha256": before,
