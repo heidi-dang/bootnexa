@@ -411,6 +411,9 @@ pub struct LargeSwmReceipt {
     pub gpt_integrity_verified: bool,
     pub disk_bytes: u64,
     pub total_staged_bytes: u64,
+    pub available_host_bytes_at_admission: u64,
+    pub required_free_host_bytes_at_admission: u64,
+    pub host_storage_admission_passed: bool,
     pub staged_parts: Vec<crate::swm_qualification::SplitPart>,
 }
 
@@ -441,6 +444,23 @@ pub struct IsoStagedFile {
     pub partition: &'static str,
     pub independent_fat32_readback_verified: bool,
 }
+/// Reserve 25% logical FAT32 metadata/headroom and at least 256 MiB of
+/// host space beyond twice the proposed SWM payload; deny invalid budgets.
+fn swm_admission_requirement(total: u64, payload_capacity: u64) -> Result<u64, MediaError> {
+    const MIB: u64 = 1024 * 1024;
+    if total == 0 || total > 1024 * MIB {
+        return Err(MediaError::Capacity);
+    }
+    let occupied = total
+        .checked_add(total / 4)
+        .and_then(|v| v.checked_add(64 * MIB))
+        .ok_or(MediaError::Capacity)?;
+    if occupied > payload_capacity {
+        return Err(MediaError::Capacity);
+    }
+    Ok((2 * total + 256 * MIB).max(512 * MIB))
+}
+
 pub struct LargeSparseDisk {
     file: File,
     b: Bounds,
@@ -892,15 +912,47 @@ impl LargeSparseDisk {
         self.payload_fat32 = true;
         self.verify()
     }
+    /// Conservative point-in-time check on the same filesystem where the
+    /// anonymous sparse disk is allocated. Linux is the only enabled target.
+    fn admit_swm_storage(&self, total: u64) -> Result<(u64, u64), MediaError> {
+        let payload_bytes = (self.b.data_last - self.b.data_first + 1)
+            .checked_mul(SECTOR)
+            .ok_or(MediaError::Capacity)?;
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::fd::AsRawFd;
+            let mut stats = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+            // SAFETY: the fd belongs to a live regular tempfile; the kernel
+            // initializes this local statvfs object only on successful return.
+            let result = unsafe { libc::fstatvfs(self.file.as_raw_fd(), stats.as_mut_ptr()) };
+            if result != 0 {
+                return Err(MediaError::Capacity);
+            }
+            // SAFETY: fstatvfs returned success and fully populated stats.
+            let stats = unsafe { stats.assume_init() };
+            let available = stats.f_bavail.saturating_mul(stats.f_frsize);
+            let required = swm_admission_requirement(total, payload_bytes)?;
+            if available < required {
+                return Err(MediaError::Capacity);
+            }
+            Ok((available, required))
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (total, payload_bytes);
+            Err(MediaError::Capacity)
+        }
+    }
+
     /// Stage an independently wimlib-verified split archive into the large
-    /// anonymous FAT32 payload partition. Strict small-file demo budget:
+    /// anonymous FAT32 payload partition. Bounded, host-space-admitted demo;
     /// real multi-GiB Windows installers still require another qualification.
     pub fn stage_verified_swm_demo(
         &mut self,
         split_dir: &std::path::Path,
     ) -> Result<LargeSwmReceipt, MediaError> {
-        const MAX_PART_BYTES: u64 = 64 * 1024 * 1024;
-        const MAX_AGGREGATE: u64 = 256 * 1024 * 1024;
+        const MAX_PART_BYTES: u64 = 512 * 1024 * 1024;
+        const MAX_AGGREGATE: u64 = 1024 * 1024 * 1024;
         if !self.payload_fat32 {
             return Err(MediaError::Corrupt);
         }
@@ -919,6 +971,11 @@ impl LargeSparseDisk {
                 return Err(MediaError::Capacity);
             }
         }
+
+        // Verify volume capacity and free bytes on the actual anonymous
+        // tempfile filesystem. This is admission, not a reservation against
+        // concurrent fills. Mid-transfer allocation errors fail closed.
+        let (available_host, required_host) = self.admit_swm_storage(total)?;
 
         // No payload may touch GPT metadata or the EFI partition. Only the
         // bounded Region below accepts writes, not the entire sparse file.
@@ -1038,6 +1095,9 @@ impl LargeSparseDisk {
             gpt_integrity_verified: layout.primary_and_backup_gpt_verified,
             disk_bytes: layout.disk_bytes,
             total_staged_bytes: total,
+            available_host_bytes_at_admission: available_host,
+            required_free_host_bytes_at_admission: required_host,
+            host_storage_admission_passed: true,
             staged_parts: parts,
         })
     }
@@ -1179,6 +1239,24 @@ impl LargeSparseDisk {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
+    #[test]
+    fn larger_swm_host_and_partition_admission_fails_closed() {
+        const MIB: u64 = 1024 * 1024;
+        assert_eq!(
+            swm_admission_requirement(288 * MIB, 1024 * MIB).unwrap(),
+            832 * MIB
+        );
+        assert_eq!(
+            swm_admission_requirement(MIB, 1024 * MIB).unwrap(),
+            512 * MIB
+        );
+        for invalid in [0, 1024 * MIB + 1, u64::MAX] {
+            assert!(swm_admission_requirement(invalid, 4 * 1024 * MIB).is_err());
+        }
+        assert!(swm_admission_requirement(600 * MIB, 700 * MIB).is_err());
+        assert!(swm_admission_requirement(500 * MIB, 800 * MIB).is_ok());
+        assert!(swm_admission_requirement(500 * MIB, 600 * MIB).is_err());
+    }
     #[cfg(target_os = "linux")]
     #[test]
     fn optional_second_fat32_and_independent_payload_sha_roundtrip() {
