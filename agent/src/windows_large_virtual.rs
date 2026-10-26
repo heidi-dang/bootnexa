@@ -495,8 +495,8 @@ impl LargeSparseDisk {
         &mut self,
         input: &mut impl Read,
     ) -> Result<IsoStreamReceipt, MediaError> {
-        const MAX_FILE: u64 = 32 * 1024 * 1024;
-        const MAX_TOTAL: u64 = 128 * 1024 * 1024;
+        const MAX_FILE: u64 = 128 * 1024 * 1024;
+        const MAX_TOTAL: u64 = 384 * 1024 * 1024;
         const MAX_COUNT: usize = 128;
         if !self.payload_fat32 {
             return Err(MediaError::Corrupt);

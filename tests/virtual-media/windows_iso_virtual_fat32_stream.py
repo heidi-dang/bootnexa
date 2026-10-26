@@ -16,12 +16,13 @@ import select
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 import windows_iso_publisher_manifest as source_gate
 import windows_installer_layout_plan as planner
 
-MAX_FILE=32*1024*1024
-MAX_TOTAL=128*1024*1024
+MAX_FILE=128*1024*1024
+MAX_TOTAL=384*1024*1024
 MAX_FILES=128
 BUF=65536
 MAGIC=b"BNXI0001"
@@ -45,16 +46,44 @@ def validated_files(manifest):
             raise Refused("ambiguous filename")
         n=item["bytes"]
         if type(n) is not int or n>MAX_FILE:
-            raise Refused("individual ISO source exceeds 32 MiB demo limit")
+            raise Refused("individual ISO source exceeds 128 MiB demo limit")
         total+=n
         if total>MAX_TOTAL:
-            raise Refused("ISO source exceeds 128 MiB demo aggregate limit")
+            raise Refused("ISO source exceeds 384 MiB demo aggregate limit")
         if not re.fullmatch(r"[a-f0-9]{64}",item["sha256"]):
             raise Refused("invalid file hash")
     names={item["path"].casefold() for item in entries}
     if names.__contains__("sources/install.wim")==names.__contains__("sources/install.esd"):
         raise Refused("requires exactly one install.wim or install.esd source")
     return entries,total
+
+def verify_temporary_storage_admission(total_bytes,capacity,*,tempdir=None,statvfs=os.statvfs):
+    """Conservative one-time admission, not a guarantee against concurrent fills.
+
+    The Rust writer uses an anonymous tempfile in the same inherited TMPDIR,
+    never a block device. Leave host headroom for GPT/FAT tables, journals,
+    OS workloads and concurrently generated temporary files.
+    """
+    if type(total_bytes) is not int or not 0<=total_bytes<=MAX_TOTAL:
+        raise Refused("staging data budget invalid")
+    if type(capacity) is not int or not 1<=capacity<=24:
+        raise Refused("virtual disk capacity invalid")
+    parent=tempdir or tempfile.gettempdir()
+    if not Path(parent).is_dir():
+        raise Refused("anonymous tempfile directory missing")
+    stats=statvfs(parent)
+    available=stats.f_bavail*stats.f_frsize
+    reserved=max(512*1024*1024,2*total_bytes+256*1024*1024)
+    if available<reserved:
+        raise Refused("insufficient host free bytes for bounded anonymous FAT32 staging")
+    payload_partition_bytes=capacity*1024**3 - (256+1)*1024**2
+    conservative_bytes=(total_bytes*125+99)//100+64*1024*1024
+    if conservative_bytes>payload_partition_bytes:
+        raise Refused("verified ISO files exceed virtual FAT32 partition with headroom")
+    return {"availableHostBytesAtAdmission":available,
+            "requiredFreeHostBytesAtAdmission":reserved,
+            "anonymousStorageAdmissionPassed":True}
+
 
 def stage_verified_stream(iso,reference,capacity,*,minimum=source_gate.MIN_OFFICIAL_ISO,
                           exe=None,agent=None):
@@ -69,6 +98,7 @@ def stage_verified_stream(iso,reference,capacity,*,minimum=source_gate.MIN_OFFIC
     manifest=source_gate.build_manifest(iso,reference,minimum=minimum,
                                         require_windows=True,exe=exe)
     entries,total=validated_files(manifest)
+    admission=verify_temporary_storage_admission(total,capacity)
     args=[str(agent),"stage-large-iso-stdin-demo",str(capacity)]
     begin=time.monotonic()
     disk=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,
@@ -153,6 +183,7 @@ def stage_verified_stream(iso,reference,capacity,*,minimum=source_gate.MIN_OFFIC
         raise Refused("ISO source changed during virtual transfer")
     return {
         "schema":"bootnexa-iso-to-anonymous-fat32-v1",
+        **admission,
         "virtualOnly":True,
         "physicalWriteAuthorized":False,
         "windowsSetupBootVerified":False,
