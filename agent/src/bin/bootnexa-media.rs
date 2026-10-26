@@ -32,6 +32,23 @@ fn run() -> Result<(), Box<dyn Error>> {
             let result=disk.stage_iso_stream(&mut stdin)?;
             println!("{}",serde_json::to_string(&result)?);
         }
+        [op,gib,swm_directory,confirmation] if op=="stage-combined-windows-tree-virtual" =>{
+            if confirmation != "--experimental-virtual-only" {
+                return Err("explicit --experimental-virtual-only confirmation required".into());
+            }
+            let capacity:u32=gib.parse()?;
+            if !(8..=24).contains(&capacity) {
+                return Err("combined virtual layout requires 8-24 GiB capacity".into());
+            }
+            if !fs::symlink_metadata(swm_directory)?.file_type().is_dir() {
+                return Err("SWM source must be a real directory".into());
+            }
+            let mut disk=LargeSparseDisk::new(capacity)?;
+            let _=disk.format_payload_fat32()?;
+            let mut stdin=std::io::stdin().lock();
+            let receipt=disk.stage_combined_windows_tree(std::path::Path::new(swm_directory),&mut stdin)?;
+            println!("{}",serde_json::to_string(&receipt)?);
+        }
         [op,gib,swm_directory,confirmation] if op=="stage-fullsize-windows-swm-virtual" =>{
             if confirmation != "--experimental-virtual-only" {
                 return Err("explicit --experimental-virtual-only confirmation required".into());
@@ -394,7 +411,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 "outputSha256":digest,"media":report
             }));
         }
-        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | inspect-udf-structure <UDF-ISO> | inspect-udf-tree <restricted-UDF-ISO> | split-wim-virtual <WIM> <existing-output-directory> [part-size-MiB] | qualify-large-windows-gpt <1-24-GiB> | qualify-large-windows-fat32 <1-24-GiB> | stage-large-iso-stdin-demo <1-24-GiB> | stage-large-windows-swm-demo <1-24-GiB> <verified-swm-directory> | stage-fullsize-windows-swm-virtual <8-24-GiB> <verified-swm-directory> --experimental-virtual-only | stage-large-windows-payload-demo <1-24-GiB> <synthetic-file> <expected-sha256> | stage-large-windows-efi-demo <1-24-GiB> <synthetic-x64-efi-file> | build-windows-swm-demo <synthetic-source-directory> <verified-swm-directory> <existing-output-directory> | inspect-windows-iso <ISO> | plan-windows-media <ISO> | stage-windows-virtual-cdrom <supported-plain-ISO9660-ISO> <existing-output-directory> | plan-iso <ISO> | build-udf-small-virtual <restricted-UDF-ISO> <real-output-directory> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-alpine-virtual <verified-Alpine-virt-3.24.1-or-3.24.2-x86_64.iso> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
+        _=>return Err("usage: bootnexa-media inspect-iso <ISO> | inspect-udf-structure <UDF-ISO> | inspect-udf-tree <restricted-UDF-ISO> | split-wim-virtual <WIM> <existing-output-directory> [part-size-MiB] | qualify-large-windows-gpt <1-24-GiB> | qualify-large-windows-fat32 <1-24-GiB> | stage-large-iso-stdin-demo <1-24-GiB> | stage-large-windows-swm-demo <1-24-GiB> <verified-swm-directory> | stage-fullsize-windows-swm-virtual <8-24-GiB> <verified-swm-directory> --experimental-virtual-only | stage-combined-windows-tree-virtual <8-24-GiB> <verified-swm-directory> --experimental-virtual-only | stage-large-windows-payload-demo <1-24-GiB> <synthetic-file> <expected-sha256> | stage-large-windows-efi-demo <1-24-GiB> <synthetic-x64-efi-file> | build-windows-swm-demo <synthetic-source-directory> <verified-swm-directory> <existing-output-directory> | inspect-windows-iso <ISO> | plan-windows-media <ISO> | stage-windows-virtual-cdrom <supported-plain-ISO9660-ISO> <existing-output-directory> | plan-iso <ISO> | build-udf-small-virtual <restricted-UDF-ISO> <real-output-directory> | build-from-iso <small-qualified-ISO> <real-output-directory> | build-hybrid-virtual <restricted-dual-format-ISO> <real-output-directory> | build-alpine-virtual <verified-Alpine-virt-3.24.1-or-3.24.2-x86_64.iso> <real-output-directory> | build-virtual <EFI-file> <real-output-directory> gpt|mbr".into())
     }
     Ok(())
 }

@@ -419,6 +419,26 @@ pub struct LargeSwmReceipt {
     pub staged_parts: Vec<crate::swm_qualification::SplitPart>,
 }
 
+/// Developer-only verified SWM + bounded ISO-file stream placed together
+/// on ONE anonymous GPT/FAT32 disk. No Microsoft publisher or boot proof.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CombinedInstallerTreeReceipt {
+    pub virtual_only: bool,
+    pub physical_write_authorized: bool,
+    pub installer_compatible_verified: bool,
+    pub windows_setup_boot_verified: bool,
+    pub full_disk_sha256_verified: bool,
+    pub persistent_disk_image_produced: bool,
+    pub complete_source_iso_verified: bool,
+    pub virtual_combined_layout_verified: bool,
+    pub efi_fat32_verified: bool,
+    pub payload_fat32_verified: bool,
+    pub gpt_integrity_verified: bool,
+    pub swm: LargeSwmReceipt,
+    pub iso_files: IsoStreamReceipt,
+}
+
 /// Receipt for strictly bounded ISO-file bytes transferred via stdin into
 /// anonymous GPT/FAT32 partitions. Neither an installer disk nor boot proof.
 #[derive(Debug, Clone, Serialize)]
@@ -544,22 +564,135 @@ impl LargeSparseDisk {
         &mut self,
         input: &mut impl Read,
     ) -> Result<IsoStreamReceipt, MediaError> {
-        const MAX_FILE: u64 = 128 * 1024 * 1024;
-        const MAX_TOTAL: u64 = 384 * 1024 * 1024;
-        const MAX_COUNT: usize = 128;
+        self.stage_iso_stream_mode(input, false)
+    }
+
+    /// An explicitly selected, synthetic-only virtual tree path. The SWM
+    /// archive is verified and staged first, then remaining ISO files are
+    /// streamed into the SAME anonymous disk. All disk state is discarded.
+    pub fn stage_combined_windows_tree(
+        &mut self,
+        split_dir: &std::path::Path,
+        input: &mut impl Read,
+    ) -> Result<CombinedInstallerTreeReceipt, MediaError> {
+        let original_gpt = verify_gpt(&mut self.file, self.b)?;
+        let swm = self.stage_fullsize_swm_virtual(split_dir)?;
+        // Admit bounded extra stream headroom early; actual stream totals
+        // are checked against FAT32 capacity below. Mid-stage disk pressure
+        // still fails closed, without persisting any exported disk image.
+        self.admit_swm_storage(
+            swm.total_staged_bytes
+                .checked_add(128 * 1024 * 1024)
+                .ok_or(MediaError::Capacity)?,
+            SwmStageProfile::FullSizeVirtual,
+        )?;
+        let iso_files = self.stage_iso_stream_mode(input, true)?;
+        let total = swm
+            .total_staged_bytes
+            .checked_add(iso_files.staged_bytes)
+            .ok_or(MediaError::Capacity)?;
+        if total > 16 * 1024 * 1024 * 1024 {
+            return Err(MediaError::Capacity);
+        }
+        let payload_capacity = (self.b.data_last - self.b.data_first + 1)
+            .checked_mul(SECTOR)
+            .ok_or(MediaError::Capacity)?;
+        let _ =
+            swm_admission_requirement(total, payload_capacity, SwmStageProfile::FullSizeVirtual)?;
+        // SWM source is reverified after all other ISO files have been copied,
+        // and SWM entries are reopened independently from final FAT32 state.
+        let after = crate::swm_qualification::verify_existing_split(split_dir)
+            .map_err(|_| MediaError::Corrupt)?;
+        if after.len() != swm.staged_parts.len()
+            || after.iter().zip(&swm.staged_parts).any(|(a, b)| {
+                a.filename != b.filename || a.bytes != b.bytes || a.sha256 != b.sha256
+            })
+        {
+            return Err(MediaError::Corrupt);
+        }
+        {
+            let region = Region {
+                file: &mut self.file,
+                base: self.b.data_first * SECTOR,
+                length: (self.b.data_last - self.b.data_first + 1) * SECTOR,
+                pos: 0,
+            };
+            let fs = FileSystem::new(region, FsOptions::new())?;
+            let sources = fs.root_dir().open_dir("SOURCES")?;
+            let mut buf = [0u8; 65_536];
+            for part in &after {
+                let mut file = sources.open_file(&part.filename)?;
+                let mut hash = Sha256::new();
+                let mut remaining = part.bytes;
+                while remaining > 0 {
+                    let n = remaining.min(buf.len() as u64) as usize;
+                    file.read_exact(&mut buf[..n])?;
+                    hash.update(&buf[..n]);
+                    remaining -= n as u64;
+                }
+                if file.read(&mut buf[..1])? != 0 || hex::encode(hash.finalize()) != part.sha256 {
+                    return Err(MediaError::Corrupt);
+                }
+            }
+        }
+        if verify_gpt(&mut self.file, self.b)? != original_gpt {
+            return Err(MediaError::Corrupt);
+        }
+        let proof = self.verify()?;
+        Ok(CombinedInstallerTreeReceipt {
+            virtual_only: true,
+            physical_write_authorized: false,
+            installer_compatible_verified: false,
+            windows_setup_boot_verified: false,
+            full_disk_sha256_verified: false,
+            persistent_disk_image_produced: false,
+            complete_source_iso_verified: false,
+            virtual_combined_layout_verified: true,
+            efi_fat32_verified: proof.esp_fat32_verified,
+            payload_fat32_verified: proof.payload_fat32_verified,
+            gpt_integrity_verified: proof.primary_and_backup_gpt_verified,
+            swm,
+            iso_files,
+        })
+    }
+
+    fn stage_iso_stream_mode(
+        &mut self,
+        input: &mut impl Read,
+        with_verified_swm: bool,
+    ) -> Result<IsoStreamReceipt, MediaError> {
+        // Larger 2-GiB ceiling is exclusively available for the combined
+        // tree after verified SWM admission. Legacy BNXI0001 stays bounded.
+        let max_file: u64 = if with_verified_swm {
+            1024 * 1024 * 1024
+        } else {
+            128 * 1024 * 1024
+        };
+        let max_total: u64 = if with_verified_swm {
+            2 * 1024 * 1024 * 1024
+        } else {
+            384 * 1024 * 1024
+        };
+        let max_count: usize = if with_verified_swm { 4096 } else { 128 };
         if !self.payload_fat32 {
             return Err(MediaError::Corrupt);
         }
         let original_gpt = verify_gpt(&mut self.file, self.b)?;
         let mut magic = [0u8; 8];
         input.read_exact(&mut magic)?;
-        if &magic != b"BNXI0001" {
+        if magic
+            != *if with_verified_swm {
+                b"BNXI0002"
+            } else {
+                b"BNXI0001"
+            }
+        {
             return Err(MediaError::Corrupt);
         }
         let mut count_bytes = [0u8; 2];
         input.read_exact(&mut count_bytes)?;
         let count = usize::from(u16::from_le_bytes(count_bytes));
-        if !(4..=MAX_COUNT).contains(&count) {
+        if !(4..=max_count).contains(&count) {
             return Err(MediaError::Capacity);
         }
         let mut seen = std::collections::HashSet::new();
@@ -620,6 +753,16 @@ impl LargeSparseDisk {
                 return Err(MediaError::Corrupt);
             }
             let folded = path.to_ascii_lowercase();
+            // Only the native wimlib-verified SWM path may create any
+            // SOURCES/install*.swm. Mixing an old WIM/ESD and split WIM
+            // is never accepted by the combined profile.
+            if with_verified_swm
+                && (folded == "sources/install.wim"
+                    || folded == "sources/install.esd"
+                    || (folded.starts_with("sources/install") && folded.ends_with(".swm")))
+            {
+                return Err(MediaError::Corrupt);
+            }
             if !seen.insert(folded.clone()) || dirs.contains(&folded) {
                 return Err(MediaError::Corrupt);
             }
@@ -639,7 +782,7 @@ impl LargeSparseDisk {
             input.read_exact(&mut bytes)?;
             let length = u64::from_le_bytes(bytes);
             total = total.checked_add(length).ok_or(MediaError::Capacity)?;
-            if length > MAX_FILE || total > MAX_TOTAL {
+            if length > max_file || total > max_total {
                 return Err(MediaError::Capacity);
             }
             let mut digest = [0u8; 32];
@@ -734,7 +877,8 @@ impl LargeSparseDisk {
         if !["EFI/BOOT/BOOTX64.EFI", "SOURCES/BOOT.WIM", "SETUP.EXE"]
             .iter()
             .all(|s| upper.contains(*s))
-            || upper.contains("SOURCES/INSTALL.WIM") == upper.contains("SOURCES/INSTALL.ESD")
+            || (!with_verified_swm
+                && (upper.contains("SOURCES/INSTALL.WIM") == upper.contains("SOURCES/INSTALL.ESD")))
         {
             return Err(MediaError::Corrupt);
         }
@@ -1324,6 +1468,31 @@ mod tests {
         assert!(
             swm_admission_requirement(500 * MIB, 600 * MIB, SwmStageProfile::BoundedDemo).is_err()
         );
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn combined_mode_rejects_legacy_magic_and_reserved_install_sources() {
+        let mut disk = LargeSparseDisk::new(1).unwrap();
+        disk.format_payload_fat32().unwrap();
+        let mut legacy = std::io::Cursor::new(b"BNXI0001".to_vec());
+        assert!(disk.stage_iso_stream_mode(&mut legacy, true).is_err());
+        for forbidden in [
+            "SOURCES/install.wim",
+            "SOURCES/install.esd",
+            "sources/install.swm",
+            "SoUrCeS/InStAlL2.SwM",
+        ] {
+            let name = forbidden.as_bytes();
+            let mut data = b"BNXI0002".to_vec();
+            data.extend_from_slice(&4u16.to_le_bytes());
+            data.extend_from_slice(&(name.len() as u16).to_le_bytes());
+            data.extend_from_slice(name);
+            let mut input = std::io::Cursor::new(data);
+            assert!(
+                disk.stage_iso_stream_mode(&mut input, true).is_err(),
+                "{forbidden}"
+            );
+        }
     }
     #[test]
     fn fullsize_swm_policy_handles_over_4gib_without_host_allocation() {

@@ -255,6 +255,10 @@ Read-only ISO planning and small ISO9660 x64 EFI extraction to a GPT/FAT32 **reg
 
 The developer-only `build-hybrid-virtual` command performs sector-perfect anonymous-file copying for a strictly constrained ISO9660 + BootNexa-layout GPT/FAT32 dual-format fixture. Whole-file SHA-256, GPT CRC, matched ISO/ESP EFI payload and QEMU/OVMF synthetic boot checks are required. This does **not** support arbitrary Linux ISO installation media or physical USB writes. Details: [hybrid ISO virtual proof](doc/HYBRID-ISO-VIRTUAL-PROOF.md).
 
+### Combined Windows-shaped virtual-media layout (experimental, synthetic)
+
+The Linux-only developer CLI can now stage a verified SWM archive and ISO-remainder file stream into the same anonymous GPT disk across FAT32 EFI and payload partitions. The synthetic CI exercises all required installer-shaped paths and SHA-256 readback; a separate read-only official manifest gate identifies feasibility blockers but grants no assembly authority. This is not a bootable Windows installer or physical writer. See [combined layout qualification](doc/WINDOWS-COMBINED-VIRTUAL-LAYOUT.md).
+
 ### Experimental full-size SWM virtual stage (operator-only, unqualified)
 
 BootNexa now has a separate explicit opt-in Linux-only anonymous GPT/FAT32 staging profile for independently verified split WIM archives, up to 16 GiB aggregate with each SWM limited to FAT32's 4 GiB-minus-one-byte file ceiling. It retains hash readback and host-storage admission, and **does not** construct a complete installer disk, export media or authorize any USB writes. The regular CI smokes the profile with a 288 MiB synthetic WIM; a separate **4.56 GB real-format synthetic SWM archive** passed the full verified transfer into anonymous 8 GiB GPT/FAT32 with independent SHA-256 readback on 26 October 2026. See [the measured evidence](doc/PHASE-8-FULLSIZE-SWM-SYNTHETIC-20261026.md). This does **not** qualify any official Windows 11 installer or Setup boot. See the [operator-only full-scale qualification and remaining gates](doc/WINDOWS-SWM-SETUP-QUALIFICATION.md).
