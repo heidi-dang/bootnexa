@@ -29,6 +29,14 @@ The input file is only a locally saved, **untrusted snapshot** of the manifest, 
 
 All plans report manifestAssertionsTrusted=false, virtualDiskGenerated=false, actualSplitWimArtifactsVerified=false, windowsSetupBootVerified=false, physicalWriteAuthorized=false and actionable=false. The plan remains **non-executable** even if the estimated capacity fits. True staging requires fresh Microsoft/source SHA evidence, real WIM resource verification, a qualified multi-GiB SWM conversion, filesystem image construction and independent read-back, and witnessed Windows Setup boot.
 
+## Bounded direct ISO→anonymous virtual GPT/FAT32 staging (synthetic qualification)
+
+A developer-only `windows_iso_virtual_fat32_stream.py --iso /safe/local/Win11_x64.iso --locale "English International 64-bit" --disk-gib 8` entry point fetches Microsoft's checksum, re-verifies every optical ISO file, streams file content **directly from 7-Zip stdout to a Rust process over a framed stdin protocol**, writes inside an anonymous Linux-only GPT disk with separate FAT32 EFI and payload partitions, independently reopens and SHA-256 verifies each FAT32 file, then rehashes the entire source ISO. The disk is **never exported** or saved to a path. This safety-limited iteration caps transfers to **32 MiB per file, 128 MiB total and 128 files**, so genuine large Windows 11 install.WIM and BOOT.WIM files will be rejected. The purpose is to qualify the verification and transfer mechanics, not produce installable Windows media.
+
+The CI fixture supplies a **synthetic fake publisher reference strictly in the test code** and fake Windows-shaped ISO file bytes; the production command has no bypass for live Microsoft checksum lookup. This separation ensures that synthetic CI cannot be reported as real Microsoft publisher or Windows Setup boot evidence. It refuses malformed framing, truncated streams, hash mismatches, FAT32 name conflicts, symlinks, invalid nominal capacity, oversized source data and unexpected file counts. The Rust agent rejects all malformed streams and never opens a physical storage device.
+
+The receipt explicitly records `physicalWriteAuthorized=false`, `windowsSetupBootVerified=false`, `installerCompatibleVerified=false`, `fullDiskSha256Verified=false`, `persistentDiskImageProduced=false`, `actualWimResourcesVerified=false` and `fullSizeWindowsInstallerSupported=false`. Large installer payload streaming, verified SWM replacement, exportable disk-image construction, QEMU Windows Setup GUI evidence and Secure Boot/TPM matrix remain separate release gates.
+
 ## Optional read-only QEMU evidence
 
 Once the official ISO passes full manifest validation, the existing QEMU/OVMF runner can independently recheck the live Microsoft checksum before booting the unmodified optical ISO:
