@@ -594,11 +594,17 @@ impl LargeSparseDisk {
         if total > 16 * 1024 * 1024 * 1024 {
             return Err(MediaError::Capacity);
         }
-        let payload_capacity = (self.b.data_last - self.b.data_first + 1)
-            .checked_mul(SECTOR)
-            .ok_or(MediaError::Capacity)?;
-        let _ =
-            swm_admission_requirement(total, payload_capacity, SwmStageProfile::FullSizeVirtual)?;
+        #[cfg(target_os = "linux")]
+        {
+            let payload_capacity = (self.b.data_last - self.b.data_first + 1)
+                .checked_mul(SECTOR)
+                .ok_or(MediaError::Capacity)?;
+            let _ = swm_admission_requirement(
+                total,
+                payload_capacity,
+                SwmStageProfile::FullSizeVirtual,
+            )?;
+        }
         // SWM source is reverified after all other ISO files have been copied,
         // and SWM entries are reopened independently from final FAT32 state.
         let after = crate::swm_qualification::verify_existing_split(split_dir)
