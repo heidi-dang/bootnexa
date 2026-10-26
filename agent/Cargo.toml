@@ -23,6 +23,9 @@ tempfile = "3"
 crc32fast = "1.4"
 fatfs = "0.3.6"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
 

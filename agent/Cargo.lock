@@ -141,6 +141,7 @@ dependencies = [
  "hex",
  "hmac",
  "http-body-util",
+ "libc",
  "rand",
  "reqwest",
  "rusqlite",
