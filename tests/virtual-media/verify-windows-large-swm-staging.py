@@ -78,5 +78,28 @@ with tempfile.TemporaryDirectory(prefix="bootnexa-large-swm-ci-") as tmp:
     assert {p.name: sha256(p) for p in source_files.iterdir()} == original
     assert all(sha256(swm / p["filename"]) == p["sha256"] for p in parts)
     assert not list(root.rglob("*.img")), "An output disk image was persisted"
+    # The explicitly selected full-size profile shares the same verified
+    # write/readback core. This 288 MiB smoke checks behavior but does NOT
+    # attest a >4 GiB source, installer boot or publisher provenance.
+    denied = run(AGENT, "stage-fullsize-windows-swm-virtual", "8", swm)
+    assert denied.returncode != 0 and not denied.stdout.strip()
+    denied = run(AGENT, "stage-fullsize-windows-swm-virtual", "7", swm,
+                 "--experimental-virtual-only")
+    assert denied.returncode != 0 and not denied.stdout.strip()
+    full = run(AGENT, "stage-fullsize-windows-swm-virtual", "8", swm,
+               "--experimental-virtual-only")
+    assert full.returncode == 0, (full.stderr, full.stdout)
+    large = json.loads(full.stdout)
+    assert large["fullSizeVirtualProfileRequested"] is True
+    assert large["persistentDiskImageProduced"] is False
+    assert large["hostStorageAdmissionPassed"] is True
+    assert large["stagedParts"] == parts
+    assert large["totalStagedBytes"] == count
+    assert large["payloadFat32Verified"] and large["gptIntegrityVerified"]
+    for flag in ("physicalWriteAuthorized", "windowsSetupBootVerified",
+                 "installerCompatibleVerified", "fullDiskSha256Verified"):
+        assert large[flag] is False, flag
+    assert not list(root.rglob("*.img")), "An output disk image was persisted"
+    print("PASS explicitly gated full-size virtual profile on bounded SWM fixture; >4GiB actual scale remains untested")
     print(f"PASS format-valid synthetic {count // MIB} MiB SWM ({len(parts)} parts) staged in anonymous 2 GiB GPT/FAT32")
     print("PASS wimlib source validation, size admission, host-space admission, FAT32 SHA readback, unchanged inputs, no physical writes")

@@ -414,6 +414,8 @@ pub struct LargeSwmReceipt {
     pub available_host_bytes_at_admission: u64,
     pub required_free_host_bytes_at_admission: u64,
     pub host_storage_admission_passed: bool,
+    pub full_size_virtual_profile_requested: bool,
+    pub persistent_disk_image_produced: bool,
     pub staged_parts: Vec<crate::swm_qualification::SplitPart>,
 }
 
@@ -444,12 +446,30 @@ pub struct IsoStagedFile {
     pub partition: &'static str,
     pub independent_fat32_readback_verified: bool,
 }
-/// Reserve 25% logical FAT32 metadata/headroom and at least 256 MiB of
-/// host space beyond twice the proposed SWM payload; deny invalid budgets.
+/// Separate full-size virtual profile. This does not authorize USB writes,
+/// prove Setup boot, or export a disk image.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SwmStageProfile {
+    BoundedDemo,
+    FullSizeVirtual,
+}
+
+/// Fail closed on FAT32 occupancy, arithmetic and conservative host headroom.
+/// The actual anonymous tempfile's free bytes are read separately with
+/// fstatvfs immediately before data staging; this is NOT space reservation.
 #[cfg(target_os = "linux")]
-fn swm_admission_requirement(total: u64, payload_capacity: u64) -> Result<u64, MediaError> {
+fn swm_admission_requirement(
+    total: u64,
+    payload_capacity: u64,
+    profile: SwmStageProfile,
+) -> Result<u64, MediaError> {
     const MIB: u64 = 1024 * 1024;
-    if total == 0 || total > 1024 * MIB {
+    const GIB: u64 = 1024 * MIB;
+    let limit = match profile {
+        SwmStageProfile::BoundedDemo => GIB,
+        SwmStageProfile::FullSizeVirtual => 16 * GIB,
+    };
+    if total == 0 || total > limit {
         return Err(MediaError::Capacity);
     }
     let occupied = total
@@ -459,7 +479,15 @@ fn swm_admission_requirement(total: u64, payload_capacity: u64) -> Result<u64, M
     if occupied > payload_capacity {
         return Err(MediaError::Capacity);
     }
-    Ok((2 * total + 256 * MIB).max(512 * MIB))
+    let free_margin = match profile {
+        SwmStageProfile::BoundedDemo => 256 * MIB,
+        SwmStageProfile::FullSizeVirtual => GIB,
+    };
+    let twice = total.checked_mul(2).ok_or(MediaError::Capacity)?;
+    Ok(twice
+        .checked_add(free_margin)
+        .ok_or(MediaError::Capacity)?
+        .max(512 * MIB))
 }
 
 pub struct LargeSparseDisk {
@@ -915,7 +943,11 @@ impl LargeSparseDisk {
     }
     /// Conservative point-in-time check on the same filesystem where the
     /// anonymous sparse disk is allocated. Linux is the only enabled target.
-    fn admit_swm_storage(&self, total: u64) -> Result<(u64, u64), MediaError> {
+    fn admit_swm_storage(
+        &self,
+        total: u64,
+        profile: SwmStageProfile,
+    ) -> Result<(u64, u64), MediaError> {
         let payload_bytes = (self.b.data_last - self.b.data_first + 1)
             .checked_mul(SECTOR)
             .ok_or(MediaError::Capacity)?;
@@ -932,7 +964,7 @@ impl LargeSparseDisk {
             // SAFETY: fstatvfs returned success and fully populated stats.
             let stats = unsafe { stats.assume_init() };
             let available = stats.f_bavail.saturating_mul(stats.f_frsize);
-            let required = swm_admission_requirement(total, payload_bytes)?;
+            let required = swm_admission_requirement(total, payload_bytes, profile)?;
             if available < required {
                 return Err(MediaError::Capacity);
             }
@@ -940,7 +972,7 @@ impl LargeSparseDisk {
         }
         #[cfg(not(target_os = "linux"))]
         {
-            let _ = (total, payload_bytes);
+            let _ = (total, payload_bytes, profile);
             Err(MediaError::Capacity)
         }
     }
@@ -952,23 +984,47 @@ impl LargeSparseDisk {
         &mut self,
         split_dir: &std::path::Path,
     ) -> Result<LargeSwmReceipt, MediaError> {
-        const MAX_PART_BYTES: u64 = 512 * 1024 * 1024;
-        const MAX_AGGREGATE: u64 = 1024 * 1024 * 1024;
+        self.stage_swm_with_profile(split_dir, SwmStageProfile::BoundedDemo)
+    }
+
+    /// An explicitly selected, developer-only, larger virtual staging path.
+    /// Requires 8-24 GiB nominal capacity and enough free host bytes to
+    /// satisfy the preflight. No path to a block device or disk export exists.
+    pub fn stage_fullsize_swm_virtual(
+        &mut self,
+        split_dir: &std::path::Path,
+    ) -> Result<LargeSwmReceipt, MediaError> {
+        if self.b.disk < 8 * 1024 * 1024 * 1024 {
+            return Err(MediaError::Capacity);
+        }
+        self.stage_swm_with_profile(split_dir, SwmStageProfile::FullSizeVirtual)
+    }
+
+    fn stage_swm_with_profile(
+        &mut self,
+        split_dir: &std::path::Path,
+        profile: SwmStageProfile,
+    ) -> Result<LargeSwmReceipt, MediaError> {
+        const MIB: u64 = 1024 * 1024;
+        let (max_part, max_aggregate, max_parts) = match profile {
+            SwmStageProfile::BoundedDemo => (512 * MIB, 1024 * MIB, 16),
+            SwmStageProfile::FullSizeVirtual => (u64::from(u32::MAX), 16 * 1024 * MIB, 64),
+        };
         if !self.payload_fat32 {
             return Err(MediaError::Corrupt);
         }
         let parts = crate::swm_qualification::verify_existing_split(split_dir)
             .map_err(|_| MediaError::Corrupt)?;
-        if !(2..=16).contains(&parts.len()) {
+        if !(2..=max_parts).contains(&parts.len()) {
             return Err(MediaError::Capacity);
         }
         let mut total = 0u64;
         for part in &parts {
-            if part.bytes == 0 || part.bytes > MAX_PART_BYTES {
+            if part.bytes == 0 || part.bytes > max_part {
                 return Err(MediaError::Capacity);
             }
             total = total.checked_add(part.bytes).ok_or(MediaError::Capacity)?;
-            if total > MAX_AGGREGATE {
+            if total > max_aggregate {
                 return Err(MediaError::Capacity);
             }
         }
@@ -976,7 +1032,7 @@ impl LargeSparseDisk {
         // Verify volume capacity and free bytes on the actual anonymous
         // tempfile filesystem. This is admission, not a reservation against
         // concurrent fills. Mid-transfer allocation errors fail closed.
-        let (available_host, required_host) = self.admit_swm_storage(total)?;
+        let (available_host, required_host) = self.admit_swm_storage(total, profile)?;
 
         // No payload may touch GPT metadata or the EFI partition. Only the
         // bounded Region below accepts writes, not the entire sparse file.
@@ -1099,6 +1155,8 @@ impl LargeSparseDisk {
             available_host_bytes_at_admission: available_host,
             required_free_host_bytes_at_admission: required_host,
             host_storage_admission_passed: true,
+            full_size_virtual_profile_requested: profile == SwmStageProfile::FullSizeVirtual,
+            persistent_disk_image_produced: false,
             staged_parts: parts,
         })
     }
@@ -1244,19 +1302,47 @@ mod tests {
     fn larger_swm_host_and_partition_admission_fails_closed() {
         const MIB: u64 = 1024 * 1024;
         assert_eq!(
-            swm_admission_requirement(288 * MIB, 1024 * MIB).unwrap(),
+            swm_admission_requirement(288 * MIB, 1024 * MIB, SwmStageProfile::BoundedDemo).unwrap(),
             832 * MIB
         );
         assert_eq!(
-            swm_admission_requirement(MIB, 1024 * MIB).unwrap(),
+            swm_admission_requirement(MIB, 1024 * MIB, SwmStageProfile::BoundedDemo).unwrap(),
             512 * MIB
         );
         for invalid in [0, 1024 * MIB + 1, u64::MAX] {
-            assert!(swm_admission_requirement(invalid, 4 * 1024 * MIB).is_err());
+            assert!(
+                swm_admission_requirement(invalid, 4 * 1024 * MIB, SwmStageProfile::BoundedDemo)
+                    .is_err()
+            );
         }
-        assert!(swm_admission_requirement(600 * MIB, 700 * MIB).is_err());
-        assert!(swm_admission_requirement(500 * MIB, 800 * MIB).is_ok());
-        assert!(swm_admission_requirement(500 * MIB, 600 * MIB).is_err());
+        assert!(
+            swm_admission_requirement(600 * MIB, 700 * MIB, SwmStageProfile::BoundedDemo).is_err()
+        );
+        assert!(
+            swm_admission_requirement(500 * MIB, 800 * MIB, SwmStageProfile::BoundedDemo).is_ok()
+        );
+        assert!(
+            swm_admission_requirement(500 * MIB, 600 * MIB, SwmStageProfile::BoundedDemo).is_err()
+        );
+    }
+    #[test]
+    fn fullsize_swm_policy_handles_over_4gib_without_host_allocation() {
+        const GIB: u64 = 1024 * 1024 * 1024;
+        let require =
+            swm_admission_requirement(5 * GIB, 12 * GIB, SwmStageProfile::FullSizeVirtual).unwrap();
+        assert_eq!(require, 11 * GIB);
+        assert!(
+            swm_admission_requirement(5 * GIB, 6 * GIB, SwmStageProfile::FullSizeVirtual,).is_err()
+        );
+        assert!(
+            swm_admission_requirement(5 * GIB, 12 * GIB, SwmStageProfile::BoundedDemo,).is_err()
+        );
+        for invalid in [0, 16 * GIB + 1, u64::MAX] {
+            assert!(
+                swm_admission_requirement(invalid, 24 * GIB, SwmStageProfile::FullSizeVirtual,)
+                    .is_err()
+            );
+        }
     }
     #[cfg(target_os = "linux")]
     #[test]
