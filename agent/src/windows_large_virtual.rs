@@ -446,6 +446,7 @@ pub struct IsoStagedFile {
 }
 /// Reserve 25% logical FAT32 metadata/headroom and at least 256 MiB of
 /// host space beyond twice the proposed SWM payload; deny invalid budgets.
+#[cfg(target_os = "linux")]
 fn swm_admission_requirement(total: u64, payload_capacity: u64) -> Result<u64, MediaError> {
     const MIB: u64 = 1024 * 1024;
     if total == 0 || total > 1024 * MIB {
