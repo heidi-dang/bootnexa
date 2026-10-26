@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import select
+import selectors
 import struct
 import subprocess
 import sys
@@ -85,6 +86,63 @@ def verify_temporary_storage_admission(total_bytes,capacity,*,tempdir=None,statv
             "anonymousStorageAdmissionPassed":True}
 
 
+def _send_to_disk(disk, data, deadline):
+    """Write to a nonblocking Rust stdin with a single monotonic deadline.
+
+    Buffered pipe writes can block indefinitely if the Rust child exits or
+    stops reading. The caller owns process cleanup and must configure the
+    file descriptor nonblocking before the first call.
+    """
+    fd=disk.stdin.fileno()
+    view=memoryview(data)
+    while view:
+        remaining=deadline-time.monotonic()
+        if remaining<=0:
+            raise Refused("virtual disk input exceeded overall deadline")
+        if disk.poll() is not None:
+            raise Refused("virtual disk agent exited during input transfer")
+        if not select.select([], [fd], [], min(1,remaining))[1]:
+            continue
+        try:
+            sent=os.write(fd,view)
+        except BlockingIOError:
+            continue
+        except BrokenPipeError as exc:
+            raise Refused("virtual disk agent closed stdin") from exc
+        if sent<=0:
+            raise Refused("virtual disk agent stopped accepting input")
+        view=view[sent:]
+
+
+def _collect_disk_report(disk, deadline):
+    """Drain both child pipes concurrently; enforce byte and time budgets."""
+    limits={"stdout":1024*1024,"stderr":65536}
+    chunks={"stdout":bytearray(),"stderr":bytearray()}
+    with selectors.DefaultSelector() as selector:
+        for name in limits:
+            pipe=getattr(disk,name)
+            os.set_blocking(pipe.fileno(),False)
+            selector.register(pipe,selectors.EVENT_READ,name)
+        while selector.get_map():
+            remaining=deadline-time.monotonic()
+            if remaining<=0:
+                raise Refused("virtual disk report exceeded overall deadline")
+            for key,_ in selector.select(min(1,remaining)):
+                name=key.data
+                chunk=os.read(key.fileobj.fileno(),BUF)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                if len(chunks[name])+len(chunk)>limits[name]:
+                    raise Refused("virtual disk agent report exceeded byte budget")
+                chunks[name].extend(chunk)
+    remaining=deadline-time.monotonic()
+    if remaining<=0:
+        raise Refused("virtual disk process exceeded overall deadline")
+    if disk.wait(timeout=remaining)!=0:
+        raise Refused("virtual disk agent rejected verified stream")
+    return json.loads(chunks["stdout"])
+
 def stage_verified_stream(iso,reference,capacity,*,minimum=source_gate.MIN_OFFICIAL_ISO,
                           exe=None,agent=None):
     iso=source_gate.safe_regular(iso)
@@ -100,18 +158,19 @@ def stage_verified_stream(iso,reference,capacity,*,minimum=source_gate.MIN_OFFIC
     entries,total=validated_files(manifest)
     admission=verify_temporary_storage_admission(total,capacity)
     args=[str(agent),"stage-large-iso-stdin-demo",str(capacity)]
-    begin=time.monotonic()
+    deadline=time.monotonic()+MAX_DURATION
     disk=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE)
     try:
-        disk.stdin.write(MAGIC+struct.pack("<H",len(entries)))
+        os.set_blocking(disk.stdin.fileno(),False)
+        _send_to_disk(disk,MAGIC+struct.pack("<H",len(entries)),deadline)
         for entry in entries:
-            if time.monotonic()-begin>MAX_DURATION:
+            if time.monotonic()>=deadline:
                 raise Refused("total ISO transfer time exceeded")
             raw=entry["path"].encode("ascii")
             expected=bytes.fromhex(entry["sha256"])
-            disk.stdin.write(struct.pack("<H",len(raw))+raw+
-                             struct.pack("<Q",entry["bytes"])+expected)
+            _send_to_disk(disk,struct.pack("<H",len(raw))+raw+
+                          struct.pack("<Q",entry["bytes"])+expected,deadline)
             extractor=subprocess.Popen([
                 exe,"x","-so","-bd","-spd",str(iso),entry["path"]
             ],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
@@ -120,7 +179,7 @@ def stage_verified_stream(iso,reference,capacity,*,minimum=source_gate.MIN_OFFIC
             sha=hashlib.sha256()
             try:
                 while True:
-                    remaining=MAX_DURATION-(time.monotonic()-begin)
+                    remaining=deadline-time.monotonic()
                     if remaining<=0 or not select.select(
                         [extractor.stdout],[],[],min(30,remaining))[0]:
                         raise Refused("ISO extractor timeout")
@@ -131,9 +190,12 @@ def stage_verified_stream(iso,reference,capacity,*,minimum=source_gate.MIN_OFFIC
                     if count>entry["bytes"]:
                         raise Refused("ISO file grew beyond verified manifest")
                     sha.update(data)
-                    disk.stdin.write(data)
-                if extractor.wait(timeout=5)!=0 or count!=entry["bytes"] or \
-                   sha.hexdigest()!=entry["sha256"]:
+                    _send_to_disk(disk,data,deadline)
+                remaining=deadline-time.monotonic()
+                if remaining<=0:
+                    raise Refused("total ISO transfer time exceeded")
+                if extractor.wait(timeout=min(5,remaining))!=0 or \
+                   count!=entry["bytes"] or sha.hexdigest()!=entry["sha256"]:
                     raise Refused("ISO extracted stream differs from verified source")
             finally:
                 extractor.stdout.close()
@@ -141,15 +203,9 @@ def stage_verified_stream(iso,reference,capacity,*,minimum=source_gate.MIN_OFFIC
                     extractor.kill()
                     extractor.wait()
         disk.stdin.close()
-        # Bounded Rust JSON report; no disk image is ever exposed or saved.
-        # stdin was closed after the final file; read bounded response pipes.
-        stdout=disk.stdout.read(1024*1024+1)
-        stderr=disk.stderr.read(65537)
-        if len(stdout)>1024*1024 or len(stderr)>65536:
-            raise Refused("virtual disk agent report exceeded budget")
-        if disk.wait(timeout=10)!=0:
-            raise Refused("virtual disk agent rejected verified stream")
-        report=json.loads(stdout)
+        # Drain stdout and stderr concurrently, including when the child
+        # misbehaves; no raw image is exposed and the same deadline applies.
+        report=_collect_disk_report(disk,deadline)
     except (BrokenPipeError,OSError,subprocess.SubprocessError,ValueError) as exc:
         raise Refused("ISO-to-virtual staging failed closed") from exc
     finally:
