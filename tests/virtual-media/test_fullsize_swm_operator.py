@@ -12,6 +12,12 @@ spec.loader.exec_module(subject)
 
 
 class FullsizeOperatorTests(unittest.TestCase):
+    def test_explicit_native_build_profile_allowlist(self):
+        self.assertEqual(subject.selected_cli_build("release").name, "bootnexa-media")
+        self.assertEqual(subject.selected_cli_build("debug").name, "bootnexa-media")
+        with self.assertRaises(subject.Refused):
+            subject.selected_cli_build("../../arbitrary-executable")
+
     def test_source_size_scratch_budget_and_virtual_capacity(self):
         G = subject.GIB
         needed = subject.validate_scratch_budget(5*G, 19*G, 16)

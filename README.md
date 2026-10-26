@@ -257,7 +257,7 @@ The developer-only `build-hybrid-virtual` command performs sector-perfect anonym
 
 ### Experimental full-size SWM virtual stage (operator-only, unqualified)
 
-BootNexa now has a separate explicit opt-in Linux-only anonymous GPT/FAT32 staging profile for independently verified split WIM archives, up to 16 GiB aggregate with each SWM limited to FAT32's 4 GiB-minus-one-byte file ceiling. It retains hash readback and host-storage admission, and **does not** construct a complete installer disk, export media or authorize any USB writes. The regular CI smokes the profile with a 288 MiB synthetic WIM; actual more-than-4-GiB data is **not yet acceptance-tested**. See the [operator-only full-scale qualification and remaining gates](doc/WINDOWS-SWM-SETUP-QUALIFICATION.md).
+BootNexa now has a separate explicit opt-in Linux-only anonymous GPT/FAT32 staging profile for independently verified split WIM archives, up to 16 GiB aggregate with each SWM limited to FAT32's 4 GiB-minus-one-byte file ceiling. It retains hash readback and host-storage admission, and **does not** construct a complete installer disk, export media or authorize any USB writes. The regular CI smokes the profile with a 288 MiB synthetic WIM; a separate **4.56 GB real-format synthetic SWM archive** passed the full verified transfer into anonymous 8 GiB GPT/FAT32 with independent SHA-256 readback on 26 October 2026. See [the measured evidence](doc/PHASE-8-FULLSIZE-SWM-SYNTHETIC-20261026.md). This does **not** qualify any official Windows 11 installer or Setup boot. See the [operator-only full-scale qualification and remaining gates](doc/WINDOWS-SWM-SETUP-QUALIFICATION.md).
 
 ### Windows Setup ISO metadata, UDF structure and FAT32 planning (Phase 8 experimental)
 
