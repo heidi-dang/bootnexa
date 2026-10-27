@@ -40,12 +40,14 @@ jobs:
       - name: Install wimlib verification engine (open-source, no Microsoft media)
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends wimtools 7zip
+          sudo apt-get install -y --no-install-recommends wimtools 7zip xorriso
           wimlib-imagex --version
       - name: Verify synthetic WIM splitting, large sparse FAT32 SWM staging, 192 MiB readback and refusals
         run: python3 tests/virtual-media/verify-swm-split.py
       - name: Verify >256 MiB genuine-format synthetic SWM staging with host-space admission and FAT32 readback
         run: python3 tests/virtual-media/verify-windows-large-swm-staging.py
+      - name: Verify source-bound synthetic ISO -> wimlib SWMs -> anonymous combined FAT32 file readback
+        run: python3 tests/virtual-media/verify-source-bound-combined-iso.py
       - name: Verify publisher SHA lookup parser and complete ISO file SHA manifest without extraction
         run: python3 tests/virtual-media/verify-windows-iso-publisher-manifest.py
       - name: Verify read-only Windows ISO manifest to 1/8/24 GiB GPT/FAT32 and WIM split feasibility plan
