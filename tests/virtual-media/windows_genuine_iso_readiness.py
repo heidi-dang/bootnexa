@@ -28,9 +28,29 @@ DEPENDENCIES=("7z","wimlib-imagex","qemu-system-x86_64")
 OVMF_SETS=(("OVMF_CODE_4M.fd","OVMF_VARS_4M.fd"),
            ("OVMF_CODE.fd","OVMF_VARS.fd"))
 OVMF_DIRS=(Path("/usr/share/OVMF"),Path("/usr/share/ovmf"))
+GUEST_MIN_HOST_AVAILABLE=3584*1024**2
 
 
-def firmware_available(dirs=OVMF_DIRS):
+def guest_host_memory_available():
+    try:
+        text=Path("/proc/meminfo").read_text(encoding="ascii")
+    except (OSError,UnicodeError):
+        return None
+    match=re.search(r"(?m)^MemAvailable:\s+([0-9]+) kB$",text)
+    return int(match.group(1))*1024 if match else None
+
+
+def firmware_available(dirs=None):
+    if dirs is None:
+        override=os.environ.get("BOOTNEXA_OVMF_DIR")
+        if override:
+            directory=Path(override)
+            if (not directory.is_absolute() or directory.is_symlink()
+                or not directory.is_dir()):
+                return False
+            dirs=(directory,)
+        else:
+            dirs=OVMF_DIRS
     for root in dirs:
         for code,variables in OVMF_SETS:
             a,b=root/code,root/variables
@@ -66,7 +86,8 @@ def native_combined_capability(executable):
 def inspect(iso,locale,scratch_parent, *,get_reference=None,
             find_executable=shutil.which,firmware_check=firmware_available,
             minimum_iso_bytes=source_gate.MIN_OFFICIAL_ISO,
-            native_binary=BINARY,capability_probe=native_combined_capability):
+            native_binary=BINARY,capability_probe=native_combined_capability,
+            guest_memory_probe=guest_host_memory_available):
     if locale not in source_gate.SUPPORTED_LOCALES:
         raise source_gate.Rejected("unsupported Windows ISO locale")
     # Injection exists only for synthetic unit tests; the real CLI never
@@ -150,6 +171,10 @@ def inspect(iso,locale,scratch_parent, *,get_reference=None,
         guest_blockers.append("qemu_guest_execution_unavailable")
     if not firmware_check():
         guest_blockers.append("ovmf_firmware_unavailable")
+    available_guest_memory=guest_memory_probe()
+    if (available_guest_memory is None
+        or available_guest_memory<GUEST_MIN_HOST_AVAILABLE):
+        guest_blockers.append("host_memavailable_below_qemu_safety_floor")
     return {
         "schema":"bootnexa-genuine-media-readiness-v1",
         "checkedUtc":datetime.now(timezone.utc).isoformat(),
@@ -173,6 +198,8 @@ def inspect(iso,locale,scratch_parent, *,get_reference=None,
         "publisherReferenceSha256":reference_sha,
         "isoSha256MatchedReference":source_exact_match,
         "dataTransferReadyForOperator":data_ready,
+        "guestHostMemAvailableBytes":available_guest_memory,
+        "guestMinimumHostMemAvailableBytes":GUEST_MIN_HOST_AVAILABLE,
         "guestEvidenceHostReady":not guest_blockers,
         "guestCaptureReadyForOperator":data_ready and not guest_blockers,
         "dataTransferBlockers":blockers,

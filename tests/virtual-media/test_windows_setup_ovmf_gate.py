@@ -86,6 +86,32 @@ class SetupGateTest(unittest.TestCase):
             self.assertFalse(report["windowsSetupBootVerified"])
             self.assertTrue(Path(report["evidenceDirectory"]).joinpath("evidence.json").exists())
 
+    def test_guest_memory_admission_avoids_oom_pressure(self):
+        self.assertEqual(gate.guest_memory_available("MemAvailable: 4194304 kB\n"),
+                         4*1024**3)
+        self.assertIsNone(gate.guest_memory_available("MemFree: 500 kB\n"))
+        with self.assertRaises(gate.Rejected):
+            gate.admit_guest_memory(2*1024**3)
+        self.assertEqual(gate.admit_guest_memory(4*1024**3),4*1024**3)
+
+    def test_explicit_packaged_ovmf_directory_and_link_refusal(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as folder:
+            root=Path(folder)
+            fw=root/"fw"
+            fw.mkdir()
+            code=fw/"OVMF_CODE_4M.fd"
+            variables=fw/"OVMF_VARS_4M.fd"
+            code.write_bytes(b"synthetic-firmware-code")
+            variables.write_bytes(b"synthetic-vars")
+            with patch.dict("os.environ",{"BOOTNEXA_OVMF_DIR":str(fw)}):
+                self.assertEqual(gate.firmware(),(code,variables))
+            link=root/"linked"
+            link.symlink_to(fw,target_is_directory=True)
+            with patch.dict("os.environ",{"BOOTNEXA_OVMF_DIR":str(link)}):
+                with self.assertRaises(gate.Rejected):
+                    gate.firmware()
+
     def test_command_has_only_readonly_iso_and_unix_monitor(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td)

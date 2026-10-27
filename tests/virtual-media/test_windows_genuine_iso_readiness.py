@@ -95,6 +95,35 @@ class GenuineIsoReadinessTests(unittest.TestCase):
             fake.chmod(0o700)
             self.assertFalse(readiness.native_combined_capability(fake))
 
+    def test_memory_reserve_blocks_undersized_host_even_with_guest_tools(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+            root=Path(tmp)
+            report=readiness.inspect(None,"English 64-bit",root,
+                get_reference=self.fake_reference(b"synthetic only"),
+                find_executable=lambda name:"/packaged/tool",
+                firmware_check=lambda:True,
+                native_binary=root/"missing",
+                guest_memory_probe=lambda:2*readiness.GIB)
+            self.assertEqual(report["guestHostMemAvailableBytes"],2*readiness.GIB)
+            self.assertIn("host_memavailable_below_qemu_safety_floor",
+                          report["guestEvidenceBlockers"])
+            self.assertFalse(report["guestEvidenceHostReady"])
+
+    def test_user_owned_ovmf_override_rejects_symlink(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+            root=Path(tmp)
+            own=root/"firmware"
+            own.mkdir()
+            (own/"OVMF_CODE_4M.fd").write_bytes(b"test-code")
+            (own/"OVMF_VARS_4M.fd").write_bytes(b"test-vars")
+            with patch.dict("os.environ",{"BOOTNEXA_OVMF_DIR":str(own)}):
+                self.assertTrue(readiness.firmware_available())
+            link=root/"linked"
+            link.symlink_to(own,target_is_directory=True)
+            with patch.dict("os.environ",{"BOOTNEXA_OVMF_DIR":str(link)}):
+                self.assertFalse(readiness.firmware_available())
+
     def test_symlink_iso_and_scratch_refused(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
             root=Path(tmp)
