@@ -29,6 +29,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build native read-only virtual CD-ROM tool
         run: cargo build --locked --manifest-path agent/Cargo.toml --bin bootnexa-media
+      - name: Verify current native binary advertises BNXI0002 combined virtual-only capability
+        run: python3 tests/virtual-media/verify-native-combined-capability.py
       - name: Qualify Linux-only 1/8/24 GiB sparse GPT, FAT32 EFI and unformatted payload isolation
         run: python3 tests/virtual-media/verify-windows-large-sparse-gpt.py
       - name: Verify synthetic two-partition FAT32 staging, isolated UEFI and adverse inputs
