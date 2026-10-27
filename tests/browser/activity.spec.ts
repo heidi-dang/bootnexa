@@ -25,7 +25,7 @@ test('Activity shows only opt-in read-only virtual history after native approval
       headers:{'access-control-allow-origin':'http://127.0.0.1:5173',
       'access-control-allow-headers':'authorization,content-type','access-control-allow-methods':'GET,POST,OPTIONS'}});
   });
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await expect(page.getByText('Read-only device inventory')).toBeVisible();
   await page.getByRole('navigation').getByRole('button',{name:'Activity'}).click();
   await expect(page.getByRole('heading',{name:'Simulation activity'})).toBeVisible();
@@ -54,7 +54,7 @@ test('Activity communicates offline agent and disabled simulation feed', async (
     }
     await route.fulfill({status:404,contentType:'application/json',body:JSON.stringify({error:'simulation_disabled'})});
   });
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await expect(page.getByText('Read-only device inventory')).toBeVisible();
   await page.getByRole('navigation').getByRole('button',{name:'Activity'}).click();
   await expect(page.getByText('Developer simulation history is disabled on this agent.')).toBeVisible();
