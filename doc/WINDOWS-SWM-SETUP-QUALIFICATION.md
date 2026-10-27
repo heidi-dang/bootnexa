@@ -90,6 +90,10 @@ The generated fixture is not an official Windows installation image, and success
 
 **A genuine greater-than-4-GiB synthetic archive transfer passed once on 26 October 2026,** with the source and independent FAT32 readback hashes verified. See [measured synthetic full-size evidence](PHASE-8-FULLSIZE-SWM-SYNTHETIC-20261026.md). This does not qualify an official Microsoft installer ISO or a genuine Windows Setup guest boot. It must not be promoted as Setup-compatible until actual resource verification, sustained stream/readback, authentic ISO context and a witnessed Windows Setup guest installation all pass separately.
 
+## Combined SWM and ISO-remainder virtual installer-shaped layout
+
+A new experimental Linux command places fully verified SWM parts and independently SHA-256-reverified ISO-remainder files into the same anonymous GPT/FAT32 disk, split between EFI and payload partitions. CI now exercises a complete synthetic Windows-shaped tree plus SWM and a read-only official-manifest capacity gate. No Microsoft ISO or genuine Windows Setup boot is claimed. See [combined layout acceptance and limitations](WINDOWS-COMBINED-VIRTUAL-LAYOUT.md).
+
 ## Official ISO full-file manifest foundation
 
 An independently source-verified, read-only official Microsoft ISO intake now exists for supported English x64 locales, with a pinned Microsoft HTTPS checksum table, bounded 7-Zip ISO/UDF listing, SHA-256 hashing of every real file by streaming to stdout, source-before/source-after verification and a local private manifest. The QEMU acceptance harness can optionally independently re-check Microsoft's live checksum immediately before guest boot. There was no official Microsoft ISO available in the qualification workspace. Full-size Windows installer creation and genuine Windows Setup boot remain unverified. See [official ISO acceptance and command sequence](WINDOWS-OFFICIAL-ISO-ACCEPTANCE.md).
