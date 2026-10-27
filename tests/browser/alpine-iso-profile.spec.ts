@@ -19,7 +19,7 @@ test('the read-only Alpine profile requires both an exact version-size and SHA-2
 });
 
 test('an Alpine ISO filename cannot spoof publisher SHA-256 or enable USB writing', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await page.getByRole('button', { name: 'ISO library' }).click();
   await page.locator('#iso-library-file').setInputFiles({
     name: 'alpine-virt-3.24.2-x86_64.iso',
