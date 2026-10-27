@@ -289,7 +289,7 @@ fn native_approve(_: &str) -> bool {
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let origin = std::env::var("BOOTNEXA_ALLOWED_ORIGIN")
-        .unwrap_or_else(|_| "http://127.0.0.1:5173".to_owned());
+        .unwrap_or_else(|_| "https://bootnexa.tnaprovider.com.au".to_owned());
     if !valid_origin(&origin) {
         eprintln!(
             "Invalid BOOTNEXA_ALLOWED_ORIGIN. Use a canonical HTTPS or local loopback origin."
