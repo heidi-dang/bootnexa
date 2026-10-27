@@ -255,6 +255,10 @@ Read-only ISO planning and small ISO9660 x64 EFI extraction to a GPT/FAT32 **reg
 
 The developer-only `build-hybrid-virtual` command performs sector-perfect anonymous-file copying for a strictly constrained ISO9660 + BootNexa-layout GPT/FAT32 dual-format fixture. Whole-file SHA-256, GPT CRC, matched ISO/ESP EFI payload and QEMU/OVMF synthetic boot checks are required. This does **not** support arbitrary Linux ISO installation media or physical USB writes. Details: [hybrid ISO virtual proof](doc/HYBRID-ISO-VIRTUAL-PROOF.md).
 
+### Source-bound official ISO to anonymous virtual FAT32 (operator-only)
+
+A separate, explicit Linux operator command now scans an existing ISO against a freshly fetched Microsoft-published SHA-256, builds a full per-file hash ledger, splits the original install.WIM using verified wimlib, streams the remaining ISO files into the same anonymous GPT/FAT32 disk, and re-verifies the original ISO after independently hashing the staged files. A network-isolated read-only QEMU/OVMF source-ISO boot evidence capture can be opted into separately. No Microsoft media is included, and actual Windows Setup boot and physical USB writing remain unqualified. See [the source-bound pipeline and remaining gates](doc/WINDOWS-SOURCE-BOUND-COMBINED-ISO.md).
+
 ### Combined Windows-shaped virtual-media layout (experimental, synthetic)
 
 The Linux-only developer CLI can now stage a verified SWM archive and ISO-remainder file stream into the same anonymous GPT disk across FAT32 EFI and payload partitions. The synthetic CI exercises all required installer-shaped paths and SHA-256 readback; a separate read-only official manifest gate identifies feasibility blockers but grants no assembly authority. This is not a bootable Windows installer or physical writer. See [combined layout qualification](doc/WINDOWS-COMBINED-VIRTUAL-LAYOUT.md).
