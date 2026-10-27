@@ -26,7 +26,7 @@ async function mockAgent(page: Page, reply: (path: string, method: string) => Re
 
 test('agent offline: no drive, no writes, clear reconnect guidance', async ({ page }) => {
   await page.route(agent + '**', route => route.abort('failed'));
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await expect(page.getByText('Agent not connected')).toBeVisible();
   await expect(page.getByText('No USB drives available')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Start writing' })).toBeDisabled();
@@ -48,7 +48,7 @@ test('Windows agent auto-discovery + approval renders actual inventory contract'
     if (path === 'access/revoke' && method === 'POST') return { status: 204 };
     return undefined;
   });
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await expect(page.getByText('USB QA Fixture')).toBeVisible();
   await expect(page.getByText('Read-only device inventory')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Start writing' })).toBeDisabled();
@@ -70,7 +70,7 @@ test('native denial prevents inventory and disk operations', async ({ page }) =>
     if (path === 'access/request') return { status: 403, body: { error: 'user_denied' } };
     return undefined;
   });
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await expect(page.getByText('Access not authorised')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Request approval' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Start writing' })).toBeDisabled();
@@ -81,7 +81,7 @@ test('agent version mismatch is rejected before access prompt', async ({ page })
   const requests = await mockAgent(page, path => path === 'health'
     ? { body: { platform: 'windows', protocolVersion: '0.1' } }
     : undefined);
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await expect(page.getByRole('main').getByText('Agent version mismatch. Update BootNexa Agent.')).toBeVisible();
   expect(requests).not.toContain('POST access/request');
   await expect(page.getByRole('button', { name: 'Start writing' })).toBeDisabled();
@@ -97,7 +97,7 @@ test('local browser automatically discovers newly started agent on retry', async
       : { devices: [], readOnly: true };
     await route.fulfill({ status: 200, headers, contentType: 'application/json', body: JSON.stringify(body) });
   });
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await expect(page.getByText('Agent not connected')).toBeVisible();
   available = true;
   await page.getByRole('button', { name: 'Retry connection' }).click();
