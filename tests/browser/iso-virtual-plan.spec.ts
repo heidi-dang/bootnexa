@@ -38,7 +38,7 @@ function makeIso(profile:'efi'|'windows'='efi') {
   return image;
 }
 test('ISO library previews a bounded x64 EFI directory tree without offering a disk write',async({page})=>{
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await page.getByRole('button',{name:'ISO library'}).click();
   await page.locator('#iso-library-file').setInputFiles({
     name:'small-efi.iso',mimeType:'application/octet-stream',buffer:makeIso()});
@@ -49,7 +49,7 @@ test('ISO library previews a bounded x64 EFI directory tree without offering a d
   await expect(page.getByRole('button',{name:/write usb|start writing/i})).toHaveCount(0);
 });
 test('Windows installer ISO candidate is detected but virtual and physical writing are refused',async({page})=>{
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await page.getByRole('button',{name:'ISO library'}).click();
   await page.locator('#iso-library-file').setInputFiles({
     name:'windows-candidate.iso',mimeType:'application/octet-stream',buffer:makeIso('windows')});
@@ -62,7 +62,7 @@ test('Windows ISO with a UDF volume signature never claims Setup boot or a physi
   const image=makeIso('windows');
   for(const [lba,signature] of [[19,'BEA01'],[20,'NSR03'],[21,'TEA01']] as const)
     image.write(signature,lba*2048+1);
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await page.getByRole('button',{name:'ISO library'}).click();
   await page.locator('#iso-library-file').setInputFiles({
     name:'windows-udf-candidate.iso',mimeType:'application/octet-stream',buffer:image});
@@ -75,7 +75,7 @@ test('Windows ISO with a UDF volume signature never claims Setup boot or a physi
 test('malformed primary-directory extents fail closed in browser planning',async({page})=>{
   const image=makeIso();
   image.writeUInt32LE(0xffffffff,16*2048+156+2);
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await page.getByRole('button',{name:'ISO library'}).click();
   await page.locator('#iso-library-file').setInputFiles({
     name:'unsafe.iso',mimeType:'application/octet-stream',buffer:image});
