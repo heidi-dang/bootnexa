@@ -1,5 +1,7 @@
 # Source-bound official ISO → SWM → anonymous FAT32 (operator-only)
 
+Run the [read-only genuine Windows ISO and host readiness check](WINDOWS-GENUINE-ISO-ACCEPTANCE-READINESS.md) first. It requires a matching live Microsoft SHA and verifies that the release binary actually advertises the BNXI0002 combined path; merely finding an executable is not sufficient.
+
 ## Execution contract
 
 BootNexa has a separate Linux-only operator command for constructing an **anonymous** virtual Windows-shaped layout from a locally acquired ISO:

@@ -24,6 +24,21 @@ use uuid::Uuid;
 fn run() -> Result<(), Box<dyn Error>> {
     let args = env::args().skip(1).collect::<Vec<_>>();
     match args.as_slice(){
+        [op] if op=="capabilities" =>{
+            // No disk allocation, I/O, dynamic host state, or privilege use.
+            // The acceptance harness must reject stale binaries that lack
+            // the combined staging operation even if the file is executable.
+            println!("{}",json!({
+                "schema":"bootnexa-native-virtual-capabilities-v1",
+                "virtualOnly":true,
+                "physicalWriteAuthorized":false,
+                "persistentDiskImageProduced":false,
+                "supportsCombinedIsoSwmStream":true,
+                "combinedIsoStreamMagic":"BNXI0002",
+                "requiresExperimentalVirtualConfirmation":true,
+                "officialWindowsSetupBootVerified":false
+            }));
+        }
         [op,gib] if op=="stage-large-iso-stdin-demo" =>{
             let capacity:u32=gib.parse()?;
             let mut disk=LargeSparseDisk::new(capacity)?;
