@@ -1,0 +1,31 @@
+# BootNexa — Caddy static site behind an existing cloudflared tunnel
+# Import as a site block into the existing Caddy config after checking for
+# listener conflicts. Do not replace or overwrite other virtual hosts.
+#
+# cloudflared ingress origin: http://127.0.0.1:17834
+# DNS hostname: bootnexa.tnaprovider.com.au
+# Install verified Vite dist/ atomically at:
+#   /srv/bootnexa/current
+:17834 {
+    bind 127.0.0.1
+    root * /srv/bootnexa/current
+    encode zstd gzip
+
+    @assets path /assets/*
+    header @assets Cache-Control "public, max-age=31536000, immutable"
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        X-Frame-Options DENY
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' http://127.0.0.1:43627; worker-src 'self'"
+    }
+    @blockedHidden path_regexp hidden ^/(?:\.|.*\/\.)
+    respond @blockedHidden 404
+    try_files {path} /index.html
+    file_server
+    log {
+        output stdout
+        format json
+    }
+}

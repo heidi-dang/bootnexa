@@ -46,7 +46,7 @@ async function selectFile(page: Page, name: string, data: Buffer) {
 
 test('ISO signature, local streamed SHA-256 and capacity preflight', async ({ page }) => {
   await connectedAgent(page, 128 * 1024 * 1024);
-  await page.goto('/');
+  await page.goto('/app/workspace');
   const sample = isoFixture();
   await selectFile(page, 'installer.iso', sample);
   await expect(page.getByText('ISO 9660: recognized')).toBeVisible();
@@ -61,7 +61,7 @@ test('ISO signature, local streamed SHA-256 and capacity preflight', async ({ pa
 
 test('bad expected checksum, malformed checksum and undersized USB block preflight', async ({ page }) => {
   await connectedAgent(page, 4096);
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await selectFile(page, 'fixture.iso', isoFixture());
   await page.getByRole('radio', { name: 'Compare image with USB QA Target' }).check();
   await expect(page.getByText('Image is larger than the target device.')).toBeVisible();
@@ -75,7 +75,7 @@ test('bad expected checksum, malformed checksum and undersized USB block preflig
 
 test('GPT, MBR and unrecognized raw images are distinguished by bytes', async ({ page }) => {
   await page.route(agentBase + '**', route => route.abort('failed'));
-  await page.goto('/');
+  await page.goto('/app/workspace');
   const mbr = mbrFixture();
   await selectFile(page, 'disk.dd', mbr);
   await expect(page.getByText('MBR raw image: recognized')).toBeVisible();
@@ -91,7 +91,7 @@ test('GPT, MBR and unrecognized raw images are distinguished by bytes', async ({
 
 test('malformed ISO, renamed ZIP and truncated images fail closed', async ({ page }) => {
   await page.route(agentBase + '**', route => route.abort('failed'));
-  await page.goto('/');
+  await page.goto('/app/workspace');
   const iso = isoFixture(); iso.writeUInt32BE(99999, 16 * 2048 + 84);
   await selectFile(page, 'bad.iso', iso);
   await expect(page.getByText('Unrecognized: not validated')).toBeVisible();
@@ -105,7 +105,7 @@ test('malformed ISO, renamed ZIP and truncated images fail closed', async ({ pag
 
 test('replacement file invalidates previous analysis and resetting clears checks', async ({ page }) => {
   await connectedAgent(page, 100 * 1024 * 1024);
-  await page.goto('/');
+  await page.goto('/app/workspace');
   const old = mbrFixture(12 * 1024 * 1024);
   await page.locator('input[type=file]').setInputFiles(file('old.img', old));
   const fresh = isoFixture();
@@ -119,7 +119,7 @@ test('replacement file invalidates previous analysis and resetting clears checks
 
 test('read-only target cannot pass the preflight', async ({ page }) => {
   await connectedAgent(page, 512 * 1024 * 1024, true);
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await selectFile(page, 'image.iso', isoFixture());
   await page.getByRole('radio', { name: 'Compare image with USB QA Target' }).check();
   await expect(page.getByText('Drive reports write protection. Preflight blocked.')).toBeVisible();
@@ -128,7 +128,7 @@ test('read-only target cannot pass the preflight', async ({ page }) => {
 
 test('multi-chunk SHA-256 matches independent Node reference without uploading bytes', async ({ page }) => {
   await page.route(agentBase + '**', route => route.abort('failed'));
-  await page.goto('/');
+  await page.goto('/app/workspace');
   const bytes = mbrFixture(9 * 1024 * 1024 + 512);
   await selectFile(page, 'multi.dd', bytes);
   await expect(page.getByText('MBR raw image: recognized')).toBeVisible();
@@ -137,7 +137,7 @@ test('multi-chunk SHA-256 matches independent Node reference without uploading b
 
 test('zero length and changed file name cannot retain a successful preflight', async ({ page }) => {
   await connectedAgent(page, 128 * 1024 * 1024);
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await selectFile(page, 'first.iso', isoFixture());
   await page.getByRole('radio', { name: 'Compare image with USB QA Target' }).check();
   await expect(page.getByText('Read-only preliminary checks complete — writing unavailable')).toBeVisible();

@@ -25,7 +25,7 @@ function isoFixture(invalidCatalog=false) {
 }
 test('ISO library validates local El Torito UEFI catalog and computes hash without enabling writing',async({page})=>{
   await page.route('http://127.0.0.1:43627/**',route=>route.abort('failed'));
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await page.getByRole('button',{name:'ISO library'}).click();
   await expect(page.getByRole('heading',{name:'ISO library.'})).toBeVisible();
   const image=isoFixture();
@@ -37,7 +37,7 @@ test('ISO library validates local El Torito UEFI catalog and computes hash witho
   await expect(page.getByRole('button',{name:'Start writing'})).toHaveCount(0);
 });
 test('ISO library rejects a tampered catalog while still permitting read-only checksum inspection',async({page})=>{
-  await page.goto('/');
+  await page.goto('/app/workspace');
   await page.getByRole('button',{name:'ISO library'}).click();
   const image=isoFixture(true);
   await page.locator('#iso-library-file').setInputFiles({name:'bad.iso',mimeType:'application/octet-stream',buffer:image});
