@@ -27,6 +27,8 @@ python3 tests/virtual-media/windows_genuine_iso_readiness.py \
 
 The command returns exit 2 while blocked, exit 1 for invalid arguments or unrecoverable errors, and exit 0 only when the exact locally hashed ISO matches the **live** Microsoft checksum, sufficient preliminary free space exists, and the current source-bound CLI, 7z and wimlib are present. A successful **readiness** result is not evidence of ISO processing, Windows Setup boot, full-media compatibility, or physical write safety. Guest capture has separate `guestEvidenceBlockers` and requires both QEMU and OVMF.
 
+An operator-controlled `BOOTNEXA_OVMF_DIR` may point to a real absolute user-owned directory containing a matching `OVMF_CODE_4M.fd` / `OVMF_VARS_4M.fd` pair; symlinks are refused. Private tools may be passed through a scoped PATH. QEMU guest execution additionally requires at least **3.5 GiB available host memory**, enforced again immediately before starting the guest. See [portable host qualification and resource admission](WINDOWS-GENUINE-ACCEPTANCE-PORTABLE-HOST.md) for measured GCloud results and the isolated toolchain approach.
+
 Local ISO acquisition is an operator step from the [official Microsoft Windows 11 download page](https://www.microsoft.com/en-au/software-download/windows11); never substitute third-party ISO mirrors, guessed checksums or unverified external downloads. Ensure ISO locale exactly matches the selected checksum. No ISO content, installer license or extracted proprietary binary is committed to Git.
 
 ### Native binary capability receipt

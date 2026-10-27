@@ -255,6 +255,10 @@ Read-only ISO planning and small ISO9660 x64 EFI extraction to a GPT/FAT32 **reg
 
 The developer-only `build-hybrid-virtual` command performs sector-perfect anonymous-file copying for a strictly constrained ISO9660 + BootNexa-layout GPT/FAT32 dual-format fixture. Whole-file SHA-256, GPT CRC, matched ISO/ESP EFI payload and QEMU/OVMF synthetic boot checks are required. This does **not** support arbitrary Linux ISO installation media or physical USB writes. Details: [hybrid ISO virtual proof](doc/HYBRID-ISO-VIRTUAL-PROOF.md).
 
+### Portable Windows ISO test tools and guest memory gate
+
+The operator-only acceptance harness supports private user-level 7-Zip/wimlib/QEMU executables and `BOOTNEXA_OVMF_DIR` for an isolated OVMF firmware directory, without privileged package installation. A fail-closed 3.5 GiB MemAvailable admission protects undersized shared VMs from starting the configured 2 GiB guest. [GCloud verification and remaining authentic-media blockers](doc/WINDOWS-GENUINE-ACCEPTANCE-PORTABLE-HOST.md).
+
 ### Genuine Windows ISO host readiness and media-source acceptance
 
 BootNexa now has a strictly read-only [genuine Windows ISO readiness check](doc/WINDOWS-GENUINE-ISO-ACCEPTANCE-READINESS.md) covering the live Microsoft checksum, authentic ISO digest matching, scratch-space budget, installed decoder/verifier tools, QEMU/OVMF guest evidence prerequisites and a versioned native binary capability receipt. It rejects stale executable builds and never marks Windows Setup boot successful automatically. The current GCloud environment is blocked by missing authentic ISO and guest tooling; USB writing remains disabled.

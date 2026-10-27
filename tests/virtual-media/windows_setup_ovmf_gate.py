@@ -26,6 +26,9 @@ MAX_ISO = 24 * 1024 * 1024 * 1024
 MAX_FRAME = 16 * 1024 * 1024
 MAX_LOG = 4 * 1024 * 1024
 HASH_CHUNK = 256 * 1024
+# 2 GiB guest plus 1.5 GiB host/emulation reserve. Read from MemAvailable,
+# not the misleading Linux "free" field. Never a reservation.
+MIN_GUEST_HOST_AVAILABLE = 3584 * 1024 * 1024
 
 
 class Rejected(ValueError):
@@ -96,8 +99,32 @@ def preflight(iso, operator_sha, minimum=MIN_ISO):
             "windowsSetupBootVerified":False,"physicalWriteAuthorized":False}
 
 
+def guest_memory_available(meminfo=None):
+    """Fail-closed MemAvailable evidence; never infer capacity from total RAM."""
+    if meminfo is None:
+        try:
+            meminfo = Path("/proc/meminfo").read_text(encoding="ascii")
+        except (OSError, UnicodeError):
+            return None
+    match = re.search(r"(?m)^MemAvailable:\s+([0-9]+) kB$", meminfo)
+    return int(match.group(1))*1024 if match else None
+
+
+def admit_guest_memory(available=None):
+    if available is None:
+        available = guest_memory_available()
+    if available is None or available < MIN_GUEST_HOST_AVAILABLE:
+        raise Rejected("insufficient Linux MemAvailable for 2-GiB QEMU guest with host reserve")
+    return available
+
+
 def firmware():
-    for root in (Path("/usr/share/OVMF"),Path("/usr/share/ovmf")):
+    raw=os.environ.get("BOOTNEXA_OVMF_DIR")
+    roots=(Path(raw),) if raw else (Path("/usr/share/OVMF"),Path("/usr/share/ovmf"))
+    if raw and (not Path(raw).is_absolute() or Path(raw).is_symlink()
+                or not Path(raw).is_dir()):
+        raise Rejected("BOOTNEXA_OVMF_DIR must be a real absolute local directory")
+    for root in roots:
         for code_name,vars_name in (("OVMF_CODE_4M.fd","OVMF_VARS_4M.fd"),
                                     ("OVMF_CODE.fd","OVMF_VARS.fd")):
             c,v=root/code_name,root/vars_name
@@ -178,6 +205,8 @@ def run_gate(iso, expected, parent, seconds, preflight_only=False, publisher_ref
     report["publisherChecksumMatched"]=publisher_reference is not None
     report["publisherChecksumReference"]=publisher_reference
     src=regular_file(iso)
+    if not preflight_only:
+        admit_guest_memory()
     code,vars_template=firmware() if not preflight_only else (None,None)
     if not preflight_only and shutil.which("qemu-system-x86_64") is None:
         raise Rejected("QEMU unavailable: cannot produce boot execution evidence")
